@@ -56,7 +56,7 @@ PUBLISH_ACCOUNT=ailang node src/index.ts "你的选题"
 
 > [**exomind**](https://github.com/helloworldtang/exomind-cli) 是一个跨平台知识库命令行客户端，通过 REST 与 ExoMind 知识库交互，提供 `ingest/query/search/entity/relations/stats` 等能力，也支持 `exomind mcp` 作为 stdio MCP server 接入 Agent，以及 `exomind draft wechat` 把草稿投递到微信公众号。本 demo 复用它做「取材」和「投递」。
 >
-> exomind CLI 默认连接 ExoMind 服务端 **<https://youhuale.cn/>** 。该服务目前**仅提供 CLI（及 MCP）交互**，尚无独立 Web 界面，需先 `exomind login` 配置凭证后通过 CLI / MCP 使用。
+> exomind CLI 默认连接 ExoMind 服务端 **<https://youhuale.cn/>** ——ExoMind 的官网与 Web 端，一个「个人知识复利引擎」：自动知识图谱、AI 跨域问答、FSRS-5 间隔复习，支持 Web / MCP / CLI 全链路接入。本 demo 通过 exomind CLI / MCP 调用的就是它的 API（CLI 需先 `exomind login` 配置凭证）。
 
 - **进口（检索取材）**：`exomind mcp` 经 MCP 暴露 `search/query/entity/relations/ingest/stats`，主控 ReAct 在取材阶段调用。
 - **出口（投递发布）**：`publish_wechat` 工具调 `POST /drafts` 注入正文 + `exomind draft wechat` 复用其「AI 出封面 + 调微信」链路。
