@@ -1,5 +1,6 @@
 // 入口：装配 HarnessAgent → stream 打 ReAct 流程日志(THOUGHT/ACTION/OBSERVE/FEEDBACK) → 落盘 output/{ts}.md + .html → 关闭 MCP
 import { writeFileSync, mkdirSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
   HumanMessage,
@@ -10,6 +11,7 @@ import {
 import { harness } from "./harness/graph.ts";
 import { buildReactAgent, closeReactAgent } from "./agents/reactAgent.ts";
 import { OUTPUT_DIR } from "./config.ts";
+import { publishMarkdown } from "./tools/publishWechat.ts";
 
 const DEFAULT_TOPIC = "用 ReAct 模式构建一个能自我纠错的 Agent";
 const topic = process.argv[2] ?? DEFAULT_TOPIC;
@@ -107,8 +109,41 @@ async function main(): Promise<void> {
   await closeReactAgent();
 }
 
-main().catch(async (e: unknown) => {
-  console.error("✗ 运行出错：", e instanceof Error ? e.stack ?? e.message : e);
-  await closeReactAgent().catch(() => {});
-  process.exit(1);
-});
+// 入口：--publish-file <md> 直发已有稿（走 pipeline 自己的 publishMarkdown）；否则走完整生成流水线
+if (process.argv.includes("--publish-file")) {
+  runPublishFile().catch((e: unknown) => {
+    console.error("✗ 投递出错：", e instanceof Error ? e.message : e);
+    process.exit(1);
+  });
+} else {
+  main().catch(async (e: unknown) => {
+    console.error("✗ 运行出错：", e instanceof Error ? e.stack ?? e.message : e);
+    await closeReactAgent().catch(() => {});
+    process.exit(1);
+  });
+}
+
+/** 直发模式：读一个 md 文件，经 publishMarkdown 直接投到公众号草稿箱（不起 Agent、不需要 DEEPSEEK_API_KEY） */
+async function runPublishFile(): Promise<void> {
+  const args = process.argv.slice(2);
+  const file = args[args.indexOf("--publish-file") + 1];
+  const ti = args.indexOf("--title");
+  const title = ti >= 0 ? args[ti + 1] : "未命名文章";
+  const ai = args.indexOf("--account");
+  const account = ai >= 0 ? args[ai + 1] : process.env.PUBLISH_ACCOUNT;
+  if (!file) { console.error("✗ 缺少 --publish-file <md 路径>"); process.exit(1); }
+  if (!account) { console.error("✗ 直发模式需要 --account <号> 或环境变量 PUBLISH_ACCOUNT"); process.exit(1); }
+
+  const markdown = await readFile(file, "utf8");
+  console.log("=".repeat(64));
+  console.log(" 直发模式 · pipeline publishMarkdown（不经 Agent 生成）");
+  console.log("=".repeat(64));
+  console.log(`文件：${file}`);
+  console.log(`标题：${title}`);
+  console.log(`目标：${account} 草稿箱`);
+  console.log(`正文：${markdown.length} 字符\n`);
+
+  const r = await publishMarkdown(title, markdown, account);
+  console.log(`✓ draft_id: ${r.draft_id}`);
+  console.log(`  media_id: ${r.media_id}  (${r.published ? "真投成功" : "前缀不符，需排查"})`);
+}

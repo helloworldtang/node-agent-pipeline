@@ -56,6 +56,14 @@ async function wechatPublish(draftId: string, account: string): Promise<{ mediaI
   return { mediaId: m[1], raw: out };
 }
 
+/** 直发：把一篇已写好的 Markdown 直接投到公众号草稿箱（不经 Agent 生成，复用同一投递链路）。
+ *  供 index.ts 的 --publish-file 模式调用，让「发布」始终走 pipeline 自己的能力。 */
+export async function publishMarkdown(title: string, markdown: string, account: string) {
+  const draftId = await postDraft(title, markdown, account);
+  const { mediaId } = await wechatPublish(draftId, account);
+  return { draft_id: draftId, media_id: mediaId, published: /^T1NF/.test(mediaId), account };
+}
+
 /** 构造 publish_wechat 工具；account 来自 PUBLISH_ACCOUNT 环境变量 */
 export function buildPublishWechatTool(account: string) {
   return tool(
