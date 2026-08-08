@@ -38,13 +38,17 @@ async function postDraft(title: string, content: string, account: string): Promi
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body,
   });
-  if (!res.ok) throw new Error(`POST /drafts 失败 HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  if (!res.ok)
+    throw new Error(`POST /drafts 失败 HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
   const data = (await res.json()) as { id: string };
   return data.id;
 }
 
 /** 调 exomind draft wechat 复用其投递链路（AI 出封面 + 调微信新建草稿），从 stdout 提取 media_id */
-async function wechatPublish(draftId: string, account: string): Promise<{ mediaId: string; raw: string }> {
+async function wechatPublish(
+  draftId: string,
+  account: string,
+): Promise<{ mediaId: string; raw: string }> {
   const { stdout, stderr } = await execFileP(
     "exomind",
     ["draft", "wechat", draftId, "--account", account],

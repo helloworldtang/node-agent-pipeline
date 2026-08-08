@@ -44,5 +44,5 @@ export const formatWeChatTool = tool(
     schema: z.object({
       markdown: z.string().describe("要排版的完整 Markdown 正文（含标题/段落/列表/代码/引用等）"),
     }),
-  }
+  },
 );

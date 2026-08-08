@@ -2,12 +2,7 @@
 import { writeFileSync, mkdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import {
-  HumanMessage,
-  AIMessage,
-  ToolMessage,
-  type BaseMessage,
-} from "@langchain/core/messages";
+import { HumanMessage, AIMessage, ToolMessage, type BaseMessage } from "@langchain/core/messages";
 import { harness } from "./harness/graph.ts";
 import { buildReactAgent, closeReactAgent } from "./agents/reactAgent.ts";
 import { OUTPUT_DIR } from "./config.ts";
@@ -53,7 +48,9 @@ async function main(): Promise<void> {
   const { toolNames } = await buildReactAgent();
   const pub = process.env.PUBLISH_ACCOUNT;
   console.log(`[react] 工具集：${toolNames.join(", ")}`);
-  console.log(`[publish] ${pub ? `启用 → 流水线闭环投到【${pub}】草稿箱` : "未启用（PUBLISH_ACCOUNT=ailang 开启闭环投递）"}\n`);
+  console.log(
+    `[publish] ${pub ? `启用 → 流水线闭环投到【${pub}】草稿箱` : "未启用（PUBLISH_ACCOUNT=ailang 开启闭环投递）"}\n`,
+  );
 
   const threadId = `harness-${Date.now()}`;
   const stream = await harness.stream(
@@ -117,7 +114,7 @@ if (process.argv.includes("--publish-file")) {
   });
 } else {
   main().catch(async (e: unknown) => {
-    console.error("✗ 运行出错：", e instanceof Error ? e.stack ?? e.message : e);
+    console.error("✗ 运行出错：", e instanceof Error ? (e.stack ?? e.message) : e);
     await closeReactAgent().catch(() => {});
     process.exit(1);
   });
@@ -131,8 +128,14 @@ async function runPublishFile(): Promise<void> {
   const title = ti >= 0 ? args[ti + 1] : "未命名文章";
   const ai = args.indexOf("--account");
   const account = ai >= 0 ? args[ai + 1] : process.env.PUBLISH_ACCOUNT;
-  if (!file) { console.error("✗ 缺少 --publish-file <md 路径>"); process.exit(1); }
-  if (!account) { console.error("✗ 直发模式需要 --account <号> 或环境变量 PUBLISH_ACCOUNT"); process.exit(1); }
+  if (!file) {
+    console.error("✗ 缺少 --publish-file <md 路径>");
+    process.exit(1);
+  }
+  if (!account) {
+    console.error("✗ 直发模式需要 --account <号> 或环境变量 PUBLISH_ACCOUNT");
+    process.exit(1);
+  }
 
   const markdown = await readFile(file, "utf8");
   console.log("=".repeat(64));

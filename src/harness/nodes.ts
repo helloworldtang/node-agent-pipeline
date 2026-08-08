@@ -33,7 +33,10 @@ export async function reactNode(state: HarnessStateT) {
     { messages: state.messages },
     { configurable: { thread_id: "react-main" }, recursionLimit: 60 },
   );
-  const writerOut = lastToolPayload<{ article?: string; model?: string }>(messages, "delegate_to_writer");
+  const writerOut = lastToolPayload<{ article?: string; model?: string }>(
+    messages,
+    "delegate_to_writer",
+  );
   const fmtOut = lastToolPayload<{ html?: string }>(messages, "format_wechat");
   return {
     messages,
@@ -95,6 +98,8 @@ export function routeAfterValidator(state: HarnessStateT): "react" | "output_gua
 export async function outputGuardrail(state: HarnessStateT) {
   const html = state.html ?? "";
   const ok = html.length > 0 && html.includes("<section");
-  console.log(`[guardrail:output] ${ok ? "通过" : "告警：未产出有效 HTML"}（html ${html.length} 字符）`);
+  console.log(
+    `[guardrail:output] ${ok ? "通过" : "告警：未产出有效 HTML"}（html ${html.length} 字符）`,
+  );
   return { valid: ok, validationMsg: ok ? "产出校验通过。" : "未产出有效 HTML。" };
 }

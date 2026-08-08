@@ -10,7 +10,12 @@ const WRITER_PROMPT = `你是一名资深微信公众号长文写手，擅长把
 - 行文自然，面向普通读者，避免干瘪罗列。
 - 只输出正文 Markdown 本身：不要前后寒暄、不要解释、不要用代码围栏包裹整篇输出。`;
 
-async function runWriter(tier: ModelTier, brief: string, notes: string, threadId: string): Promise<string> {
+async function runWriter(
+  tier: ModelTier,
+  brief: string,
+  notes: string,
+  threadId: string,
+): Promise<string> {
   const writer = createAgent({
     model: buildLlm(tier, 0.85),
     tools: [],

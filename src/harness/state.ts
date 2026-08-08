@@ -2,7 +2,10 @@
 import { Annotation, messagesStateReducer } from "@langchain/langgraph";
 import type { BaseMessage } from "@langchain/core/messages";
 
-const lastWins = <T>() => (_prev: T, next: T): T => next;
+const lastWins =
+  <T>() =>
+  (_prev: T, next: T): T =>
+    next;
 
 export const HarnessState = Annotation.Root({
   // 主消息流（ReAct 全过程 + 校验反馈都进这里）
