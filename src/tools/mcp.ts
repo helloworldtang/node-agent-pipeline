@@ -1,25 +1,23 @@
-// exomind MCP 接入：经 @langchain/mcp-adapters 的 MultiServerMCPClient(stdio) 拉 `exomind mcp`
-// 工具是动态发现的（search/query/entity/...），无需硬编码 —— 这正是 MCP 的价值
+// 可选 MCP 接入（通用版）：设置了 MCP_COMMAND 才启用，工具动态发现，不绑定任何特定服务
+// 例如接一个搜索类 MCP server 作为补充取材手段；不配则完全不启动，零依赖
 import { MultiServerMCPClient } from "@langchain/mcp-adapters";
-import { MCP_COMMAND, MCP_ARGS } from "../config.ts";
+import { MCP_ARGS, MCP_COMMAND } from "../config.ts";
 
-export function createExomindMcpClient(): MultiServerMCPClient {
-  return new MultiServerMCPClient({
-    exomind: {
-      transport: "stdio",
-      command: MCP_COMMAND,
-      args: MCP_ARGS,
-      // exomind 读取 ~/.exomind/config.json 里的凭证，继承当前 env 即可
-    },
-  });
+export function isMcpEnabled(): boolean {
+  return MCP_COMMAND.length > 0;
 }
 
-/** 启动 exomind MCP server，返回动态发现的 LangChain 工具集 + client（用完需 close） */
-export async function loadExomindTools(): Promise<{
+export async function loadMcpTools(): Promise<{
   client: MultiServerMCPClient;
   tools: Awaited<ReturnType<MultiServerMCPClient["getTools"]>>;
 }> {
-  const client = createExomindMcpClient();
+  const client = new MultiServerMCPClient({
+    external: {
+      transport: "stdio",
+      command: MCP_COMMAND,
+      args: MCP_ARGS,
+    },
+  });
   const tools = await client.getTools();
   return { client, tools };
 }

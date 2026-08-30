@@ -1,77 +1,135 @@
-# node-agent-pipeline
+# node-agent-pipeline：个人公众号文章生产工作台
 
-用 **Node 生态 Agent 框架最新版（LangChain.js + LangGraph.js）** 跑通一条端到端的「公众号文章生产流水线」，把五个零件串起来，并闭环到「投草稿箱」：
+个人公众号文章生产流水线。在原有 ReAct、Harness、SubAgent 和排版 Skill 架构基础上，去掉了对 exomind 私有服务的默认依赖：
 
-| 零件 | 实现 | 代码位置 |
-|---|---|---|
-| **ReActAgent** | `createAgent`(flash) + 工具集，Thought→Action→Observation 循环 | `src/agents/reactAgent.ts` |
-| **HarnessAgent** | 外层 StateGraph：防护栏 + 验证循环 + MemorySaver(上下文管理) | `src/harness/{state,nodes,graph}.ts` |
-| **DeepSeek** | `ChatOpenAI` 走 OpenAI 兼容协议；flash 主控、pro 写作 | `src/llm.ts` |
-| **Skill（排版）** | 自建 markdown-it + juice 内联渲染器，主题借鉴 doocs/md（star>1K） | `src/tools/formatSkill.ts` + `src/theme/doocs-default.css` |
-| **MCP** | `@langchain/mcp-adapters` stdio 拉 `exomind mcp`，工具动态发现 | `src/tools/mcp.ts` |
-| **subagent（写作）** | 独立 `createAgent`(pro)，用 `tool()` 包成 `delegate_to_writer` | `src/agents/writerAgent.ts` |
-| **发布（可选闭环）** | `publish_wechat`：`POST /drafts` 注入正文 + `exomind draft wechat` | `src/tools/publishWechat.ts` |
+- **取材**：改为本地素材笔记（`materials/` 目录 / `--notes` 文件），适配「和 AI 探讨 → 整理结论 → 写成自己理解的版本」的工作流；可选挂任意 MCP server 补充检索
+- **发布**：直连微信公众号官方 API（AppID/AppSecret 按账号配置），抽象了 Publisher 接口，未来可扩展知乎/掘金等平台
+- **LLM**：DeepSeek / Kimi(Moonshot) / 任意 OpenAI 兼容服务可切换，key 与模型名均可配
+- **校验**：规则全部走环境变量，默认不强制固定文章结构
 
-## 流程
+## 架构
 
 ```
-                HarnessAgent（外层 StateGraph + MemorySaver）
- ┌────────────────────────────────────────────────────────────┐
- │  防栏(入) → ReAct → 验证器 ──不过,带反馈回退──┐            │
- │                │ 通过                         │            │
- │                ▼                              │            │
- │           防栏(出) → END                      │            │
- └────────────────────────────────────────────────────────────┘
-       ReActAgent 的工具:
-         ① exomind MCP (search/query/entity/...)   ← 取素材
-         ② delegate_to_writer                      ← 写作 subagent(pro)
-         ③ format_wechat                           ← 排版 Skill
-         ④ publish_wechat  (设 PUBLISH_ACCOUNT 才挂) ← 投草稿箱(闭环)
+START → input_guardrail ──过──→ react → validator ──不过──→ refine（只修当前草稿，最多 MAX_RETRIES 次）
+                 │拒                                   │过
+                 ▼                                     ▼
+                END ←────────── output_guardrail ←─────┘
+
+react（主控 ReActAgent）的工具：
+  ① list_materials / read_material   ← 本地素材笔记
+  ② [MCP 动态工具]                   ← 可选，设了 MCP_COMMAND 才启用
+  ③ delegate_to_writer               ← 写作 subagent（pro 模型，上下文隔离）
+  ④ format_wechat                    ← 排版 Skill（markdown-it + juice 内联，doocs/md 主题）
+  ⑤ publish_article                  ← 可选，指定发布账号才注册
 ```
 
-校验循环节点（`validator`）首轮强制精修一次（稳定演示一次打回），之后做真实校验（含「## 小结」+ ≥600 字），未过则带反馈回退到 react 重写，最多 `MAX_RETRIES` 次。
-
-## 运行
-
-前置：
-- Node ≥ 23.6（用原生类型剥离直接跑 `.ts`，无需 tsx/babel）
-- 环境变量 `DEEPSEEK_API_KEY` 已设置
-- `exomind` CLI 已 `exomind login`（MCP 与 publish_wechat 复用其凭证）
+## 快速开始
 
 ```bash
 pnpm install
-
-# 默认：取材 → 写作 → 排版 → 落盘（不投公众号）
-node src/index.ts "你的选题"
-
-# 闭环：多一步，排版后自动投到指定公众号草稿箱
-PUBLISH_ACCOUNT=ailang node src/index.ts "你的选题"
+cp .env.example .env          # 填入 LLM_API_KEY
 ```
 
-产出：`output/<时间戳>.md`（正文）+ `output/<时间戳>.html`（可直接粘贴进公众号编辑器）。设了 `PUBLISH_ACCOUNT` 时还会多一条草稿箱记录（`media_id` 前缀 `T1NF4457...` 表示真投成功）。
+运行环境需要 Node.js 22.5+（使用内置 `node:sqlite` 保存文章索引）。
 
-类型检查：`pnpm typecheck`
+启动 Web 控制台：
 
-## exomind 在 demo 里承担的角色
+```bash
+cd web
+npm install
+npm run dev
+```
 
-> [**exomind**](https://github.com/helloworldtang/exomind-cli) 是一个跨平台知识库命令行客户端，通过 REST 与 ExoMind 知识库交互，提供 `ingest/query/search/entity/relations/stats` 等能力，也支持 `exomind mcp` 作为 stdio MCP server 接入 Agent，以及 `exomind draft wechat` 把草稿投递到微信公众号。本 demo 复用它做「取材」和「投递」。
->
-> exomind CLI 默认连接 ExoMind 服务端 **<https://youhuale.cn/>** ——ExoMind 的官网与 Web 端，一个「个人知识复利引擎」：自动知识图谱、AI 跨域问答、FSRS-5 间隔复习，支持 Web / MCP / CLI 全链路接入。本 demo 通过 exomind CLI / MCP 调用的就是它的 API（CLI 需先 `exomind login` 配置凭证）。
+默认访问地址为 `http://127.0.0.1:7101/`，API 地址为 `http://127.0.0.1:7302/`。可用 `VITE_WEB_PORT`、`VITE_API_PORT` 或 API 的 `PORT` / `--port` 参数覆盖默认端口。
 
-- **进口（检索取材）**：`exomind mcp` 经 MCP 暴露 `search/query/entity/relations/ingest/stats`，主控 ReAct 在取材阶段调用。
-- **出口（投递发布）**：`publish_wechat` 工具调 `POST /drafts` 注入正文 + `exomind draft wechat` 复用其「AI 出封面 + 调微信」链路。
+### 1. 只生成，不发布（最常用）
 
-两端都用上 exomind，流水线闭环。
+```bash
+# 凭模型自身知识写
+node src/index.ts "为什么 HTTPS 握手需要两次往返"
 
-## 关键技术决策 & 避坑
+# 带素材笔记写（推荐）：先把和 AI 探讨的结论存成笔记
+node src/index.ts "为什么 HTTPS 握手需要两次往返" --notes materials/https-notes.md
+```
 
-- **`createReactAgent`（`@langchain/langgraph/prebuilt`）在 LangGraph v1 已弃用** → 用 `langchain` 包的 `createAgent`（仍是 ReAct 模式）。注意系统提示词字段是 **`systemPrompt`**，不是 `prompt`/`messageModifier`。
-- **DeepSeek 经 `@langchain/openai` 的 `ChatOpenAI` 接入**：`configuration: { baseURL: "https://api.deepseek.com/v1" }`，`model` 用 `deepseek-v4-flash` / `deepseek-v4-pro`（V4 时代，无 V3/R1）。
-- **MCP 工具动态发现**：`MultiServerMCPClient({ exomind: { transport:"stdio", command:"exomind", args:["mcp"] } }).getTools()`，无需硬编码工具名；进程结束前 `client.close()` 防子进程泄漏。
-- **subagent = 隔离上下文的子 agent**：写作子 agent 用独立 `thread_id`，主 ReAct 通过 `delegate_to_writer` 工具调用它。
-- **HarnessAgent 的 checkpointer 只挂外层图**，内层 `createAgent` 不挂，避免双重 checkpoint。
-- **publish_wechat 受 `PUBLISH_ACCOUNT` 控制**：默认不注册（避免每次跑都往草稿箱堆文章）；复用 exomind 的 `POST /drafts`（注入正文，CLI 没有 import 正文这步走 HTTP）+ `exomind draft wechat`（复用其出封面/调微信，这步走 child_process）。
-- **排版 Skill 借鉴 doocs/md**：doocs/md 的 `@md/core` 是 private、`md-cli` 是 web 服务，不便直接调用；故自建 markdown-it 渲染 + juice 内联（微信不支持外部样式表），主题 CSS 解析了 doocs 的 CSS 变量。
-- **替代方案（未采用）**：doocs/md 自带 `packages/mcp-server`，暴露 `render_markdown` 工具可直接把 Markdown 转 styled HTML；若要让「排版」本身也走 MCP，可用它替代自建渲染器。
-- DeepSeek 的 `withStructuredOutput` 不稳，故校验器走**确定性规则**（长度 + 必需结构），不用结构化输出。
-- 微信图文正文硬限 **20000 字符**（md 渲染 HTML 膨胀约 2.5x，代码块是大头），写公众号稿要控制代码块数量与篇幅。
+产出留底：`output/<文章 ID>/article.md`、`article.html`、`readme.log`、`run.json`；即使正文缺失，运行级记录仍写入 `output/runs/<thread>.json`。
+
+### 2. 生成并自动投递公众号草稿箱
+
+先配置账号：
+
+```bash
+cp config/accounts.example.json config/accounts.json
+# 编辑 accounts.json 填入 AppID / AppSecret / 封面图路径
+```
+
+> 前提：在公众号后台「设置与开发 → 基本配置」把本机公网 IP 加入 **IP 白名单**；
+> 封面图是微信草稿的必填项，放一张图到 `covers/` 并在配置里指向它。
+
+```bash
+node src/index.ts "选题" --notes 笔记.md --publish 我的公众号
+```
+
+### 3. 直发已有稿件（不起 Agent，不需要 LLM key）
+
+```bash
+node src/index.ts --publish-file output/<文章ID>/article.md --title "文章标题" --account 我的公众号
+```
+
+实际生成的文章位于 `output/<文章ID>/article.md`。直发 Markdown 中的 `images/foo.png` 会按 Markdown 文件所在目录解析，并在投递时自动上传到微信图床。
+
+
+### Web API 安全
+
+默认只监听 `127.0.0.1`。如果使用 `--host 0.0.0.0` 或其他远程地址，必须先配置 `API_TOKEN`，否则服务不会启动：
+
+```dotenv
+API_TOKEN=一段足够长的随机字符串
+```
+
+使用 Web 控制台时，可参考 `web/.env.example` 在 `web/.env` 配置同一个 `VITE_API_TOKEN`。请求体有大小限制，图片上传使用原始文件流；任务默认只允许并发运行一个，可通过 Web 的“取消任务”终止后台子进程。
+
+### 封面图
+
+- 微信草稿必须有封面。账号配置里的 `cover` 是默认封面（已附一张生成的 `covers/default.png`），**同一张图只会上传一次**（按文件哈希持久缓存），不会反复占用素材库。
+- 单篇指定封面：`--cover covers/某张图.png`（或环境变量 `PUBLISH_COVER`），优先级高于账号默认。
+- 注意：微信草稿的封面必须走**永久素材**接口，「临时素材」3 天过期、不能用于草稿，所以没有采用临时上传方案。
+- 想给某篇文章生成专属封面：直接对我说"给选题 X 生成封面"即可（内置图像生成），存到 `covers/` 后用 `--cover` 指定。
+
+## 切换模型
+
+`.env` 里改 `LLM_PROVIDER` 即可：
+
+| provider | baseURL | 默认模型 | 备注 |
+|---|---|---|---|
+| `deepseek`（默认） | api.deepseek.com | v4-flash / v4-pro | |
+| `moonshot` | api.moonshot.cn | kimi-k2.5 / kimi-k2.6 | 开放平台按量付费 |
+| `custom` | 自定义 | 自定义 | 需配 `LLM_BASE_URL` / `LLM_MODEL_FLASH` / `LLM_MODEL_PRO` |
+
+模型名、校验阈值（`MIN_ARTICLE_LEN`、`REQUIRED_SECTIONS`、`MAX_RETRIES`）和质量检查（摘要、引用、敏感词）等全部可用环境变量覆盖，见 `.env.example`。
+
+## 文章索引与版本
+
+Web 服务首次启动时会扫描一次 `output/`，将文章元数据、历史版本和旧版 `deliveries.jsonl` 发布记录同步到 `output/articles.sqlite`。之后文章列表、版本列表和发布记录直接从 SQLite 查询；正文、HTML、封面和历史正文仍保存在原有文件夹中，数据库损坏或删除后可通过重启服务从文件重建。
+
+文章库中的删除操作会将文章文件夹移动到 `output/.trash/<文章 ID>/`，不会立即删除正文、历史版本、封面或日志。Web 控制台的“回收站”可以查看已移入的文章并恢复；恢复时若文章库中已存在同 ID 文章，会拒绝覆盖。
+
+文章编辑、回滚、封面变更和发布会增量更新索引。Web 页面现在支持查看版本列表、逐行比较差异和确认回滚；版本 API 仍可通过 `/api/articles/<id>/versions` 使用，单个版本正文可通过 `/api/articles/<id>/versions/<version>` 读取。
+
+如需把索引数据库放到其他位置，可配置 `ARTICLE_DB_FILE`（相对项目根目录解析）。
+
+## 扩展新发布平台
+
+1. 在 `src/publishers/` 新建 `<platform>.ts`，实现 `Publisher` 接口（`types.ts`）；
+2. 在 `registry.ts` 里注册一行。
+
+微信公众号实现（`wechat.ts`）可作参考：gettoken（缓存）→ add_material 传封面（按哈希持久缓存）→ draft/add。
+
+## 类型检查
+
+```bash
+pnpm typecheck
+
+# 回归测试
+pnpm test
+```
