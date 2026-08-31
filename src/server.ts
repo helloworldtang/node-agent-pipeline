@@ -23,7 +23,7 @@ import {
   API_TOKEN,
   MAX_CONCURRENT_RUNS,
 } from "./config.ts";
-import { publishArticle } from "./tools/publish.ts";
+import { parsePlatforms, publishArticle } from "./tools/publish.ts";
 import { generateImage } from "./tools/imagegen.ts";
 import { describeArticleForCover } from "./tools/coverDesign.ts";
 import { regenerateArticle, rewriteSelection } from "./tools/aiEditor.ts";
@@ -878,16 +878,31 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
       }
       const markdown = await readArticleFile(file, "md");
       const html = await readArticleFile(file, "html").catch(() => undefined);
-      const r = await publishArticle({
-        platform: "wechat",
+      // platform 可传逗号分隔多平台（如 "wechat,exomind"），默认 wechat 本地直连
+      const platforms = parsePlatforms(String(body.platform ?? "wechat"));
+      const results: Array<{ platform: string; mediaId: string; idempotent: boolean }> = [];
+      for (const platform of platforms) {
+        const r = await publishArticle({
+          platform,
+          account,
+          title,
+          markdown,
+          html,
+          sourceFile: file,
+          cover,
+        });
+        results.push({
+          platform: r.platform,
+          mediaId: r.id,
+          idempotent: Boolean(r.extra?.idempotent),
+        });
+      }
+      return sendJson(res, 200, {
+        ok: true,
+        mediaId: results[0]?.mediaId,
         account,
-        title,
-        markdown,
-        html,
-        sourceFile: file,
-        cover,
+        results,
       });
-      return sendJson(res, 200, { ok: true, mediaId: r.id, account });
     }
 
     // 投递记录：output/deliveries.jsonl，按时间倒序

@@ -10,7 +10,7 @@ import { buildReactAgent, closeReactAgent } from "./agents/reactAgent.ts";
 import { LLM_API_KEY, LLM_PRESETS, LLM_PROVIDER, OUTPUT_DIR } from "./config.ts";
 import { loadMaterialsFromDir } from "./tools/materials.ts";
 import { collectNotes as collectNotesFromSources, shouldAutoLoadMaterials } from "./util/notes.ts";
-import { publishArticle } from "./tools/publish.ts";
+import { parsePlatforms, publishArticle } from "./tools/publish.ts";
 import { createArticle } from "./articles.ts";
 import type { ArticleRunRecord } from "./articles.ts";
 import type { RunStatus } from "./harness/state.ts";
@@ -220,32 +220,48 @@ async function runPublishFile(): Promise<void> {
   const file = argValue("--publish-file");
   const title = argValue("--title") ?? "未命名文章";
   const account = argValue("--account") ?? process.env.PUBLISH_ACCOUNT;
-  const platform = argValue("--platform") ?? process.env.PUBLISH_PLATFORM ?? "wechat";
+  const platformSpec = argValue("--platform") ?? process.env.PUBLISH_PLATFORM ?? "wechat";
   if (!file) {
     console.error("✗ 缺少 --publish-file <md 路径>");
     process.exit(1);
   }
   if (!account) {
-    console.error("✗ 直发模式需要 --account <账号>（账号在 config/accounts.json 里配置）");
+    console.error(
+      "✗ 直发模式需要 --account <账号>（wechat 平台账号在 config/accounts.json 配置，exomind 平台为服务端账号）",
+    );
     process.exit(1);
   }
+  // 支持逗号分隔多平台同投（如 --platform wechat,exomind）
+  const platforms = parsePlatforms(platformSpec);
 
   const absoluteFile = resolve(process.cwd(), file);
   const markdown = await readFile(absoluteFile, "utf8");
   console.log("=".repeat(64));
-  console.log(` 直发模式 · ${platform}/${account}（不经 Agent 生成）`);
+  console.log(` 直发模式 · ${platforms.join("+")}/${account}（不经 Agent 生成）`);
   console.log("=".repeat(64));
   console.log(`文件：${file}\n标题：${title}\n正文：${markdown.length} 字符\n`);
 
-  const r = await publishArticle({
-    platform,
-    account,
-    title,
-    markdown,
-    cover: argValue("--cover"),
-    baseDir: dirname(absoluteFile),
-  });
-  console.log(`✓ 已投递草稿箱，draft media_id: ${r.id}`);
+  let failed = 0;
+  for (const platform of platforms) {
+    try {
+      const r = await publishArticle({
+        platform,
+        account,
+        title,
+        markdown,
+        cover: argValue("--cover"),
+        baseDir: dirname(absoluteFile),
+      });
+      const idempotent = Boolean(r.extra?.idempotent);
+      console.log(
+        `✓ [${platform}] 已投递草稿箱，media_id: ${r.id}${idempotent ? "（幂等命中，复用上次投递）" : ""}`,
+      );
+    } catch (e) {
+      failed++;
+      console.error(`✗ [${platform}] 投递失败：`, e instanceof Error ? e.message : e);
+    }
+  }
+  if (failed > 0) process.exitCode = 1;
 }
 
 if (hasFlag("--publish-file")) {

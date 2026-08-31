@@ -4,10 +4,27 @@ import { z } from "zod";
 import { appendFile, mkdir } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
-import { getPublisher } from "../publishers/registry.ts";
+import { getPublisher, listPlatforms } from "../publishers/registry.ts";
 import { renderMarkdownToWeChatHtml } from "./formatSkill.ts";
 import { OUTPUT_DIR } from "../config.ts";
 import { ensureDeliveriesIndexed, getArticleIndex } from "../article-db.ts";
+
+/** 平台规格串 → 平台列表：逗号分隔（如 "wechat,exomind" 同时投两条链路），去重去空并校验 */
+export function parsePlatforms(spec: string): string[] {
+  const platforms = [
+    ...new Set(
+      spec
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ),
+  ];
+  const unknown = platforms.filter((p) => !listPlatforms().includes(p));
+  if (unknown.length > 0) {
+    throw new Error(`未知发布平台：${unknown.join(", ")}，当前支持：${listPlatforms().join(", ")}`);
+  }
+  return platforms;
+}
 
 /** 投递记录：JSONL 持久化到 output/deliveries.jsonl，供界面展示「已投递」标记 */
 async function logDelivery(record: Record<string, unknown>): Promise<void> {
@@ -100,16 +117,23 @@ export async function publishArticle(opts: {
   return result;
 }
 
-/** 构造 publish_article 工具；platform/account 在构建时绑定（来自 CLI 参数） */
-export function buildPublishTool(platform: string, account: string) {
+/** 构造 publish_article 工具；platforms/account 在构建时绑定（来自 CLI 参数）。
+ *  platform 支持逗号分隔多平台（如 "wechat,exomind"），逐个投递并汇总结果。 */
+export function buildPublishTool(platforms: string | string[], account: string) {
+  const list = parsePlatforms(typeof platforms === "string" ? platforms : platforms.join(","));
+  const label = list.join("、");
   return tool(
     async ({ title, markdown }) => {
-      const r = await publishArticle({ platform, account, title, markdown });
-      return { platform: r.platform, account: r.account, draft_id: r.id, ok: true };
+      const results = [];
+      for (const platform of list) {
+        const r = await publishArticle({ platform, account, title, markdown });
+        results.push({ platform: r.platform, draft_id: r.id });
+      }
+      return { ok: true, account, results };
     },
     {
       name: "publish_article",
-      description: `把文章投递到 ${platform} 平台【${account}】账号的草稿箱。排版完成后调用：title 用文章主标题，markdown 用完整正文（HTML 由发布器自动生成）。`,
+      description: `把文章投递到 ${label} 平台【${account}】账号的草稿箱。排版完成后调用：title 用文章主标题，markdown 用完整正文（HTML 由发布器自动生成）。`,
       schema: z.object({
         title: z.string().describe("文章标题"),
         markdown: z.string().describe("完整 markdown 正文"),

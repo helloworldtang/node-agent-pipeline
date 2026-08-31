@@ -78,6 +78,25 @@ node src/index.ts --publish-file output/<文章ID>/article.md --title "文章标
 
 实际生成的文章位于 `output/<文章ID>/article.md`。直发 Markdown 中的 `images/foo.png` 会按 Markdown 文件所在目录解析，并在投递时自动上传到微信图床。
 
+### 取材 / 发布双模式（本地优先，可切 exomind，可双开）
+
+**取材（进口）**：默认本地优先——`materials/` 目录 + `--notes` 笔记。可选再挂 MCP 检索（两者叠加，不是二选一）：
+
+```dotenv
+# .env —— 例：接回 ExoMind 知识库做检索取材（需已 exomind login），任意 stdio MCP server 均可
+MCP_COMMAND=exomind
+MCP_ARGS=mcp
+```
+
+**发布（出口）**：默认 `wechat` 本地直连官方 API（上文的 accounts.json 方案）。也可经 ExoMind 服务端投递（复用其 AI 出封面 + 公众号链路，需本机 `exomind login`）：
+
+```bash
+node src/index.ts "选题" --publish 我的公众号 --platform exomind        # 只走 exomind
+node src/index.ts --publish-file 稿.md --title "标题" --account 我的公众号 --platform wechat,exomind  # 两条链路都投
+```
+
+`--platform` / `PUBLISH_PLATFORM` / Web API `POST /api/publish` 的 `platform` 字段同一套取值：`wechat`（默认）、`exomind`、或逗号分隔多值同投；投递记录按平台分别落档，幂等防重键也按平台隔离。
+
 
 ### Web API 安全
 
