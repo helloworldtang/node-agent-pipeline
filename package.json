@@ -3,14 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Node Agent 端到端 demo: ReActAgent + HarnessAgent + DeepSeek + Skill(doocs/md 主题) + MCP(exomind) + subagent",
+  "description": "个人公众号文章生产流水线：ReActAgent + HarnessAgent + 可切换 LLM(DeepSeek/Kimi/任意OpenAI兼容) + 素材笔记取材 + 微信官方API直投(可扩展多平台)",
   "scripts": {
     "start": "node src/index.ts",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "typecheck": "tsc --noEmit"
+    "dev:api": "node src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.ts"
   },
   "dependencies": {
     "@langchain/core": "^1.2.4",
@@ -24,14 +22,8 @@
     "zod": "^3.24.0"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
-    "@types/markdown-it": "^14.1.2",
+    "@types/markdown-it": "^14.1.0",
     "@types/node": "^22.10.0",
-    "eslint": "^10.8.1",
-    "eslint-config-prettier": "^10.1.8",
-    "globals": "^17.9.0",
-    "prettier": "^3.9.6",
-    "typescript": "^5.7.0",
-    "typescript-eslint": "^8.66.0"
+    "typescript": "^5.7.0"
   }
 }

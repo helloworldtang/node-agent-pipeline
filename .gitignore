@@ -1,6 +1,14 @@
 node_modules/
 output/
+web/dist/
+
 .env
+config/accounts.json
+
+# materials/ 是你的私人素材库，默认不入库；如需纳入版本管理删掉下面这行
+materials/*
+!materials/README.md
+
 *.log
 .DS_Store
 .claude/

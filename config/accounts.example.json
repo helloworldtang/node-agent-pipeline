@@ -1,0 +1,9 @@
+{
+  "我的公众号": {
+    "appId": "wx你的AppID",
+    "appSecret": "你的AppSecret",
+    "cover": "covers/default.png",
+    "author": "你的笔名",
+    "comment": true
+  }
+}
