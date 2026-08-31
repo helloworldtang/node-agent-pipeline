@@ -70,8 +70,7 @@ export interface ArticleAiSession {
   messages: ArticleAiMessage[];
 }
 
-const ts = (): string =>
-  new Date().toLocaleString("zh-CN", { hour12: false }).replace(/\//g, "-");
+const ts = (): string => new Date().toLocaleString("zh-CN", { hour12: false }).replace(/\//g, "-");
 
 /** 防目录穿越：id 只允许安全字符 */
 export function safeId(id: string): string | null {
@@ -153,7 +152,9 @@ async function readArticleMetaFromDir(id: string, dir: string): Promise<IndexedA
   } else {
     try {
       title = extractTitle(await readFile(mdPath, "utf8")) ?? id;
-    } catch { /* 文件被并发替换时保留 id 作为标题 */ }
+    } catch {
+      /* 文件被并发替换时保留 id 作为标题 */
+    }
   }
   const htmlStat = await stat(join(dir, "article.html")).catch(() => null);
   const coverFile = await coverFileOf(dir);
@@ -186,7 +187,7 @@ async function readTrashedAt(dir: string): Promise<string> {
 
 /** 启动时把文件夹结构同步到 SQLite；之后列表查询不再扫描 output/。 */
 export async function syncArticleIndex(): Promise<void> {
-  let entries: string[] = [];
+  let entries: string[];
   try {
     entries = await readdir(OUTPUT_DIR);
   } catch {
@@ -214,7 +215,9 @@ export async function syncArticleIndex(): Promise<void> {
           createdAt: versionStat.mtime.toISOString(),
         });
       }
-    } catch { /* 没有历史目录 */ }
+    } catch {
+      /* 没有历史目录 */
+    }
     getArticleIndex().removeVersionsExcept(name, versionIds);
   }
   // 进程在移动目录与更新 SQLite 之间异常退出时，启动同步仍能恢复回收站状态。
@@ -222,9 +225,15 @@ export async function syncArticleIndex(): Promise<void> {
     for (const entry of await readdir(TRASH_DIR, { withFileTypes: true })) {
       if (!entry.isDirectory() || !safeId(entry.name)) continue;
       const meta = await readArticleMetaFromDir(entry.name, join(TRASH_DIR, entry.name));
-      if (meta) getArticleIndex().markArticleTrashed(entry.name, await readTrashedAt(join(TRASH_DIR, entry.name)));
+      if (meta)
+        getArticleIndex().markArticleTrashed(
+          entry.name,
+          await readTrashedAt(join(TRASH_DIR, entry.name)),
+        );
     }
-  } catch { /* 回收站目录不存在时忽略 */ }
+  } catch {
+    /* 回收站目录不存在时忽略 */
+  }
   getArticleIndex().removeArticlesExcept(ids);
 }
 
@@ -234,7 +243,7 @@ export async function listArticles(): Promise<ArticleMeta[]> {
 
 /** 列出回收站中的文章；正文目录仍保留，只有恢复后才回到文章库。 */
 export async function listTrashedArticles(): Promise<TrashedArticleMeta[]> {
-  let entries: string[] = [];
+  let entries: string[];
   try {
     entries = (await readdir(TRASH_DIR, { withFileTypes: true }))
       .filter((entry) => entry.isDirectory() && safeId(entry.name))
@@ -249,8 +258,9 @@ export async function listTrashedArticles(): Promise<TrashedArticleMeta[]> {
     if (!meta) continue;
     articles.push({ ...meta, trashedAt: await readTrashedAt(dir) });
   }
-  return articles.sort((a, b) =>
-    new Date(b.trashedAt).getTime() - new Date(a.trashedAt).getTime() || b.id.localeCompare(a.id),
+  return articles.sort(
+    (a, b) =>
+      new Date(b.trashedAt).getTime() - new Date(a.trashedAt).getTime() || b.id.localeCompare(a.id),
   );
 }
 
@@ -261,7 +271,11 @@ export async function trashArticle(id: string): Promise<void> {
   if (!(await stat(source).catch(() => null))?.isDirectory()) throw new Error("文章不存在");
   if (await stat(target).catch(() => null)) throw new Error("回收站中已存在同 ID 文章");
   const trashedAt = new Date().toISOString();
-  await atomicWriteFile(join(source, ".trash-meta.json"), JSON.stringify({ trashedAt }, null, 2), "utf8");
+  await atomicWriteFile(
+    join(source, ".trash-meta.json"),
+    JSON.stringify({ trashedAt }, null, 2),
+    "utf8",
+  );
   await mkdir(TRASH_DIR, { recursive: true });
   await rename(source, target);
   getArticleIndex().markArticleTrashed(id, trashedAt);
@@ -272,8 +286,10 @@ export async function restoreTrashedArticle(id: string): Promise<void> {
   if (!safeId(id)) throw new Error("非法文章 ID");
   const source = join(TRASH_DIR, id);
   const target = articleDir(id);
-  if (!(await stat(source).catch(() => null))?.isDirectory()) throw new Error("回收站中不存在该文章");
-  if (await stat(target).catch(() => null)) throw new Error("文章库中已存在同 ID 文章，无法覆盖恢复");
+  if (!(await stat(source).catch(() => null))?.isDirectory())
+    throw new Error("回收站中不存在该文章");
+  if (await stat(target).catch(() => null))
+    throw new Error("文章库中已存在同 ID 文章，无法覆盖恢复");
   await rename(source, target);
   await rm(join(target, ".trash-meta.json"), { force: true });
   getArticleIndex().markArticleRestored(id);
@@ -294,9 +310,10 @@ export async function createArticle(opts: {
   const dir = articleDir(id);
   const stagingDir = `${dir}.tmp-${randomUUID()}`;
   await mkdir(join(stagingDir, "images"), { recursive: true });
-  const html = opts.html === undefined || opts.html === null
-    ? renderMarkdownToWeChatHtml(opts.markdown)
-    : opts.html;
+  const html =
+    opts.html === undefined || opts.html === null
+      ? renderMarkdownToWeChatHtml(opts.markdown)
+      : opts.html;
   const rawTitle = opts.title?.trim() || extractTitle(opts.markdown) || id;
   const metaJson: ArticleMetadataFile = {
     id,
@@ -310,11 +327,18 @@ export async function createArticle(opts: {
     await atomicWriteFile(join(stagingDir, "article.html"), html, "utf8");
     await atomicWriteFile(
       join(stagingDir, "readme.log"),
-      [`[${ts()}] 文章创建（标题：「${rawTitle}」）`, ...(opts.log ?? []).map((l) => `[${ts()}] ${l}`)].join("\n") + "\n",
+      [
+        `[${ts()}] 文章创建（标题：「${rawTitle}」）`,
+        ...(opts.log ?? []).map((l) => `[${ts()}] ${l}`),
+      ].join("\n") + "\n",
       "utf8",
     );
     if (opts.run) {
-      await atomicWriteFile(join(stagingDir, "run.json"), JSON.stringify(opts.run, null, 2), "utf8");
+      await atomicWriteFile(
+        join(stagingDir, "run.json"),
+        JSON.stringify(opts.run, null, 2),
+        "utf8",
+      );
     }
     await rename(stagingDir, dir);
     const meta = await readArticleMetaFromDisk(id);
@@ -381,7 +405,9 @@ export async function restoreArticleVersion(id: string, version: string): Promis
   const dir = articleDir(id);
   const historyDir = join(dir, "history", version);
   const markdown = await readFile(join(historyDir, "article.md"), "utf8");
-  const html = await readFile(join(historyDir, "article.html"), "utf8").catch(() => renderMarkdownToWeChatHtml(markdown));
+  const html = await readFile(join(historyDir, "article.html"), "utf8").catch(() =>
+    renderMarkdownToWeChatHtml(markdown),
+  );
   const currentMarkdown = await readFile(join(dir, "article.md"), "utf8").catch(() => null);
   const currentHtml = await readFile(join(dir, "article.html"), "utf8").catch(() => null);
   if (currentMarkdown !== null && currentMarkdown !== markdown) {
@@ -393,11 +419,16 @@ export async function restoreArticleVersion(id: string, version: string): Promis
   await refreshArticleIndex(id);
 }
 
-export async function readArticleVersion(id: string, version: string): Promise<{ id: string; markdown: string; html: string }> {
+export async function readArticleVersion(
+  id: string,
+  version: string,
+): Promise<{ id: string; markdown: string; html: string }> {
   if (!/^[\w.-]+$/.test(version) || version.includes("..")) throw new Error("非法文章版本");
   const historyDir = join(articleDir(id), "history", version);
   const markdown = await readFile(join(historyDir, "article.md"), "utf8");
-  const html = await readFile(join(historyDir, "article.html"), "utf8").catch(() => renderMarkdownToWeChatHtml(markdown));
+  const html = await readFile(join(historyDir, "article.html"), "utf8").catch(() =>
+    renderMarkdownToWeChatHtml(markdown),
+  );
   return { id: version, markdown, html };
 }
 
@@ -412,7 +443,10 @@ export async function readArticleSource(id: string): Promise<{ topic: string; no
   let topic = "";
   let notes = "";
   try {
-    const parsed = JSON.parse(await readFile(runPath, "utf8")) as { topic?: unknown; notes?: unknown };
+    const parsed = JSON.parse(await readFile(runPath, "utf8")) as {
+      topic?: unknown;
+      notes?: unknown;
+    };
     topic = typeof parsed.topic === "string" ? parsed.topic.trim() : "";
     notes = typeof parsed.notes === "string" ? parsed.notes.trim() : "";
   } catch {
@@ -464,7 +498,7 @@ export async function removeArticleCover(id: string): Promise<void> {
 }
 
 export async function onCoverRenamed(oldName: string, newName: string): Promise<void> {
-  let entries: string[] = [];
+  let entries: string[];
   try {
     entries = await readdir(OUTPUT_DIR);
   } catch {
@@ -479,7 +513,11 @@ export async function onCoverRenamed(oldName: string, newName: string): Promise<
       if (meta.sourceName === oldName) {
         await atomicWriteFile(
           metaPath,
-          JSON.stringify({ ...meta, sourceName: newName, updatedAt: new Date().toISOString() }, null, 2),
+          JSON.stringify(
+            { ...meta, sourceName: newName, updatedAt: new Date().toISOString() },
+            null,
+            2,
+          ),
           "utf8",
         );
         await refreshArticleIndex(id);
@@ -524,7 +562,10 @@ export async function listArticleAiSessions(id: string): Promise<ArticleAiSessio
   const filePath = join(articleDir(id), "ai-chat.jsonl");
   try {
     const raw = await readFile(filePath, "utf8");
-    const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean);
+    const lines = raw
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
     const sessions: ArticleAiSession[] = [];
     for (const line of lines) {
       try {
@@ -536,7 +577,9 @@ export async function listArticleAiSessions(id: string): Promise<ArticleAiSessio
         /* 忽略单行损坏 */
       }
     }
-    return sessions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return sessions.sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
   } catch {
     return [];
   }
@@ -547,7 +590,7 @@ export async function saveArticleAiSession(id: string, session: ArticleAiSession
   await mkdir(dir, { recursive: true });
   const filePath = join(dir, "ai-chat.jsonl");
 
-  let existing: ArticleAiSession[] = [];
+  let existing: ArticleAiSession[];
   try {
     const raw = await readFile(filePath, "utf8");
     existing = raw
@@ -577,7 +620,11 @@ export async function saveArticleAiSession(id: string, session: ArticleAiSession
   await atomicWriteFile(filePath, content, "utf8");
 }
 
-async function saveArticleVersion(id: string, markdown: string, html: string | null): Promise<ArticleVersionMeta> {
+async function saveArticleVersion(
+  id: string,
+  markdown: string,
+  html: string | null,
+): Promise<ArticleVersionMeta> {
   const version = `${Date.now()}-${randomUUID().slice(0, 4)}`;
   const historyDir = join(articleDir(id), "history", version);
   await atomicWriteFile(join(historyDir, "article.md"), markdown, "utf8");
@@ -595,7 +642,7 @@ async function refreshArticleIndex(id: string): Promise<void> {
 
 /** 旧版平铺结构迁移：output/<ts>.md(+html) → output/<ts>/article.md(+html) */
 export async function migrateFlatOutputs(): Promise<number> {
-  let entries: string[] = [];
+  let entries: string[];
   try {
     entries = await readdir(OUTPUT_DIR);
   } catch {
@@ -615,7 +662,9 @@ export async function migrateFlatOutputs(): Promise<number> {
     try {
       await rename(oldHtml, join(dir, "article.html"));
       hasHtml = true;
-    } catch { /* 没有配对 html */ }
+    } catch {
+      /* 没有配对 html */
+    }
     const md = await readFile(join(dir, "article.md"), "utf8").catch(() => "");
     await atomicWriteFile(
       join(dir, "readme.log"),

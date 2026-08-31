@@ -76,7 +76,8 @@ export const readMaterialTool = tool(
   },
   {
     name: "read_material",
-    description: "读取素材目录里的某个笔记文件全文。先 list_materials 看有哪些文件，再按文件名读取。",
+    description:
+      "读取素材目录里的某个笔记文件全文。先 list_materials 看有哪些文件，再按文件名读取。",
     schema: z.object({ filename: z.string().describe("素材文件名，如 notes.md") }),
   },
 );

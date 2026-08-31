@@ -7,7 +7,9 @@ export type ModelTier = "flash" | "pro";
 export function buildLlm(tier: ModelTier = "flash", temperature = 0.7): ChatOpenAI {
   const preset = LLM_PRESETS[LLM_PROVIDER];
   if (!preset) {
-    throw new Error(`未知 LLM_PROVIDER="${LLM_PROVIDER}"，可选：${Object.keys(LLM_PRESETS).join(", ")}`);
+    throw new Error(
+      `未知 LLM_PROVIDER="${LLM_PROVIDER}"，可选：${Object.keys(LLM_PRESETS).join(", ")}`,
+    );
   }
   if (!LLM_API_KEY) {
     throw new Error(`缺少 API key：请设置 LLM_API_KEY（或 DEEPSEEK_API_KEY / MOONSHOT_API_KEY）`);

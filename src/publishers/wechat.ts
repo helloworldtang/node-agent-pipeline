@@ -5,7 +5,13 @@
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
-import { PROJECT_ROOT, WECHAT_ACCOUNTS_FILE, OUTPUT_DIR, HTTP_RETRIES, HTTP_TIMEOUT_MS } from "../config.ts";
+import {
+  PROJECT_ROOT,
+  WECHAT_ACCOUNTS_FILE,
+  OUTPUT_DIR,
+  HTTP_RETRIES,
+  HTTP_TIMEOUT_MS,
+} from "../config.ts";
 import type { PublishInput, PublishResult, Publisher } from "./types.ts";
 import { atomicWriteFile } from "../util/files.ts";
 import { fetchWithRetry } from "../util/http.ts";
@@ -52,7 +58,13 @@ async function getAccessToken(cfg: WechatAccountCfg): Promise<string> {
   const hit = tokenCache.get(cfg.appId);
   if (hit && hit.expireAt > Date.now()) return hit.token;
   const url = `${API}/cgi-bin/token?grant_type=client_credential&appid=${cfg.appId}&secret=${cfg.appSecret}`;
-  const data = (await (await fetchWithRetry(url, {}, { retries: HTTP_RETRIES, timeoutMs: HTTP_TIMEOUT_MS, label: "获取微信 access_token" })).json()) as {
+  const data = (await (
+    await fetchWithRetry(
+      url,
+      {},
+      { retries: HTTP_RETRIES, timeoutMs: HTTP_TIMEOUT_MS, label: "获取微信 access_token" },
+    )
+  ).json()) as {
     access_token?: string;
     expires_in?: number;
     errcode?: number;
@@ -81,7 +93,11 @@ async function loadCoverCache(): Promise<Record<string, string>> {
   }
 }
 
-async function uploadCover(cfg: WechatAccountCfg, token: string, coverOverride?: string): Promise<string> {
+async function uploadCover(
+  cfg: WechatAccountCfg,
+  token: string,
+  coverOverride?: string,
+): Promise<string> {
   const coverPath = resolve(PROJECT_ROOT, coverOverride ?? cfg.cover);
   if (!(await isInsideDir(coverPath, PROJECT_ROOT))) {
     throw new Error("封面路径必须位于项目目录内，且不能通过符号链接逃逸");
@@ -93,15 +109,23 @@ async function uploadCover(cfg: WechatAccountCfg, token: string, coverOverride?:
 
   const form = new FormData();
   form.append("media", new Blob([buf]), coverPath.split("/").pop() ?? "cover.jpg");
-  const res = await fetchWithRetry(`${API}/cgi-bin/material/add_material?access_token=${token}&type=image`, {
-    method: "POST",
-    body: form,
-  }, { retries: HTTP_RETRIES, retryPost: true, timeoutMs: HTTP_TIMEOUT_MS, label: "上传微信封面" });
+  const res = await fetchWithRetry(
+    `${API}/cgi-bin/material/add_material?access_token=${token}&type=image`,
+    {
+      method: "POST",
+      body: form,
+    },
+    { retries: HTTP_RETRIES, retryPost: true, timeoutMs: HTTP_TIMEOUT_MS, label: "上传微信封面" },
+  );
   const data = (await res.json()) as { media_id?: string; errcode?: number; errmsg?: string };
   if (!data.media_id) {
     throw new Error(`上传封面失败：${data.errmsg ?? "未知错误"}（errcode=${data.errcode}）`);
   }
-  await atomicWriteFile(COVER_CACHE_FILE, JSON.stringify({ ...cache, [key]: data.media_id }, null, 2), "utf8");
+  await atomicWriteFile(
+    COVER_CACHE_FILE,
+    JSON.stringify({ ...cache, [key]: data.media_id }, null, 2),
+    "utf8",
+  );
   return data.media_id;
 }
 
@@ -131,20 +155,35 @@ async function uploadInlineImage(
   let cache: Record<string, string> = {};
   try {
     cache = JSON.parse(await readFile(IMG_CACHE_FILE, "utf8")) as Record<string, string>;
-  } catch { /* 无缓存文件 */ }
+  } catch {
+    /* 无缓存文件 */
+  }
   if (cache[key]) return cache[key];
 
   const form = new FormData();
   form.append("media", new Blob([buf]), absPath.split("/").pop() ?? "image.png");
-  const res = await fetchWithRetry(`${API}/cgi-bin/media/uploadimg?access_token=${token}`, {
-    method: "POST",
-    body: form,
-  }, { retries: HTTP_RETRIES, retryPost: true, timeoutMs: HTTP_TIMEOUT_MS, label: "上传微信正文插图" });
+  const res = await fetchWithRetry(
+    `${API}/cgi-bin/media/uploadimg?access_token=${token}`,
+    {
+      method: "POST",
+      body: form,
+    },
+    {
+      retries: HTTP_RETRIES,
+      retryPost: true,
+      timeoutMs: HTTP_TIMEOUT_MS,
+      label: "上传微信正文插图",
+    },
+  );
   const data = (await res.json()) as { url?: string; errcode?: number; errmsg?: string };
   if (!data.url) {
     throw new Error(`上传正文插图失败：${data.errmsg ?? "未知错误"}（errcode=${data.errcode}）`);
   }
-  await atomicWriteFile(IMG_CACHE_FILE, JSON.stringify({ ...cache, [key]: data.url }, null, 2), "utf8");
+  await atomicWriteFile(
+    IMG_CACHE_FILE,
+    JSON.stringify({ ...cache, [key]: data.url }, null, 2),
+    "utf8",
+  );
   return data.url;
 }
 
@@ -168,7 +207,9 @@ async function uploadInlineImages(
       const url = await uploadInlineImage(cfg, token, abs);
       out = out.split(`src="${src}"`).join(`src="${url}"`);
     } catch (e) {
-      throw new Error(`插图 ${src} 处理失败：${e instanceof Error ? e.message : String(e)}`);
+      throw new Error(`插图 ${src} 处理失败：${e instanceof Error ? e.message : String(e)}`, {
+        cause: e,
+      });
     }
   }
   return out;
@@ -178,7 +219,13 @@ async function uploadInlineImages(
 export function createWechatPublisher(account: string): Publisher {
   return {
     platform: "wechat",
-    async publish({ title, markdown, html, coverPath, baseDir }: PublishInput): Promise<PublishResult> {
+    async publish({
+      title,
+      markdown,
+      html,
+      coverPath,
+      baseDir,
+    }: PublishInput): Promise<PublishResult> {
       const cfg = await loadAccount(account);
       const token = await getAccessToken(cfg);
       const thumbMediaId = await uploadCover(cfg, token, coverPath);
@@ -197,12 +244,16 @@ export function createWechatPublisher(account: string): Publisher {
           },
         ],
       };
-      const res = await fetchWithRetry(`${API}/cgi-bin/draft/add?access_token=${token}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        // 微信接口要求 JSON 中的中文不转义（fetch 默认就是 UTF-8 直出）
-        body: JSON.stringify(body),
-      }, { retries: 0, timeoutMs: HTTP_TIMEOUT_MS, label: "创建微信草稿" });
+      const res = await fetchWithRetry(
+        `${API}/cgi-bin/draft/add?access_token=${token}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          // 微信接口要求 JSON 中的中文不转义（fetch 默认就是 UTF-8 直出）
+          body: JSON.stringify(body),
+        },
+        { retries: 0, timeoutMs: HTTP_TIMEOUT_MS, label: "创建微信草稿" },
+      );
       const data = (await res.json()) as { media_id?: string; errcode?: number; errmsg?: string };
       if (!data.media_id) {
         throw new Error(`新建草稿失败：${data.errmsg ?? "未知错误"}（errcode=${data.errcode}）`);

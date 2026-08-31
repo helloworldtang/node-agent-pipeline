@@ -54,7 +54,8 @@ export async function fetchWithRetry(
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch(input, { ...init, signal: controller.signal });
-      if (response.ok || !retryableStatus(response.status) || attempt === attempts - 1) return response;
+      if (response.ok || !retryableStatus(response.status) || attempt === attempts - 1)
+        return response;
       await response.body?.cancel().catch(() => {});
       await wait(retryAfterMs(response) ?? Math.min(250 * 2 ** attempt, 4_000));
     } catch (error) {

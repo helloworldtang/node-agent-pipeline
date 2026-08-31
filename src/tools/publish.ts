@@ -13,15 +13,13 @@ import { ensureDeliveriesIndexed, getArticleIndex } from "../article-db.ts";
 async function logDelivery(record: Record<string, unknown>): Promise<void> {
   await mkdir(OUTPUT_DIR, { recursive: true });
   const entry = { at: new Date().toISOString(), ...record };
-  await appendFile(
-    join(OUTPUT_DIR, "deliveries.jsonl"),
-    JSON.stringify(entry) + "\n",
-    "utf8",
-  );
+  await appendFile(join(OUTPUT_DIR, "deliveries.jsonl"), JSON.stringify(entry) + "\n", "utf8");
   getArticleIndex().recordDelivery(entry);
 }
 
-async function findSuccessfulDelivery(idempotencyKey: string): Promise<{ platform: string; account: string; id: string } | null> {
+async function findSuccessfulDelivery(
+  idempotencyKey: string,
+): Promise<{ platform: string; account: string; id: string } | null> {
   await ensureDeliveriesIndexed();
   return getArticleIndex().findSuccessfulDelivery(idempotencyKey);
 }
@@ -46,10 +44,13 @@ export async function publishArticle(opts: {
   // 优先级：显式传入 > 环境变量 PUBLISH_COVER > 账号配置里的 cover
   const coverPath = opts.cover ?? process.env.PUBLISH_COVER ?? undefined;
   // sourceFile 是文章文件夹 id 时，正文里的本地插图从该文件夹解析
-  const baseDir = opts.baseDir ?? (opts.sourceFile ? resolve(OUTPUT_DIR, opts.sourceFile) : undefined);
-  const idempotencyKey = opts.idempotencyKey ?? createHash("sha256")
-    .update(`${opts.platform}\0${opts.account}\0${opts.title}\0${opts.markdown}`)
-    .digest("hex");
+  const baseDir =
+    opts.baseDir ?? (opts.sourceFile ? resolve(OUTPUT_DIR, opts.sourceFile) : undefined);
+  const idempotencyKey =
+    opts.idempotencyKey ??
+    createHash("sha256")
+      .update(`${opts.platform}\0${opts.account}\0${opts.title}\0${opts.markdown}`)
+      .digest("hex");
   const existing = await findSuccessfulDelivery(idempotencyKey);
   if (existing) return { ...existing, extra: { idempotent: true } };
   let result;
@@ -73,7 +74,10 @@ export async function publishArticle(opts: {
     });
     if (opts.sourceFile) {
       const { appendLog } = await import("../articles.ts");
-      await appendLog(opts.sourceFile, `投递失败：${error instanceof Error ? error.message : String(error)}`).catch(() => {});
+      await appendLog(
+        opts.sourceFile,
+        `投递失败：${error instanceof Error ? error.message : String(error)}`,
+      ).catch(() => {});
     }
     throw error;
   }

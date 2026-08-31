@@ -74,7 +74,11 @@ export function parseArticleRegenerateOutput(
 ): { title: string; article: string; explanation: string } {
   const text = String(raw ?? "").trim();
   if (!text) {
-    return { title: fallbackTitle, article: fallbackArticle, explanation: "模型未返回新文章，保留当前版本" };
+    return {
+      title: fallbackTitle,
+      article: fallbackArticle,
+      explanation: "模型未返回新文章，保留当前版本",
+    };
   }
 
   const titleMarker = "===TITLE===";
@@ -86,7 +90,11 @@ export function parseArticleRegenerateOutput(
     const afterContent = contentParts.join(contentMarker);
     const [articlePart, ...explanationParts] = afterContent.split(explanationMarker);
     return {
-      title: (titlePart ?? "").replace(/^[#\s]+/, "").split("\n")[0]?.trim() || fallbackTitle,
+      title:
+        (titlePart ?? "")
+          .replace(/^[#\s]+/, "")
+          .split("\n")[0]
+          ?.trim() || fallbackTitle,
       article: (articlePart ?? "").trim() || fallbackArticle,
       explanation: explanationParts.join(explanationMarker).trim() || "已根据提示重新生成整篇文章",
     };
@@ -94,7 +102,12 @@ export function parseArticleRegenerateOutput(
 
   const jsonCandidate = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)?.[1] ?? text;
   try {
-    const parsed = JSON.parse(jsonCandidate) as { title?: unknown; article?: unknown; content?: unknown; explanation?: unknown };
+    const parsed = JSON.parse(jsonCandidate) as {
+      title?: unknown;
+      article?: unknown;
+      content?: unknown;
+      explanation?: unknown;
+    };
     if (parsed && typeof parsed === "object") {
       const article = String(parsed.article ?? parsed.content ?? "").trim();
       if (article) {
@@ -121,7 +134,10 @@ export function parseArticleRegenerateOutput(
 }
 
 /** 解析模型输出中的重写正文与修改说明 */
-export function parseRewriteOutput(raw: string, fallbackOriginal: string): { rewrittenText: string; explanation: string } {
+export function parseRewriteOutput(
+  raw: string,
+  fallbackOriginal: string,
+): { rewrittenText: string; explanation: string } {
   const text = String(raw ?? "").trim();
   if (!text) {
     return { rewrittenText: fallbackOriginal, explanation: "未提供修改内容" };
@@ -138,7 +154,10 @@ export function parseRewriteOutput(raw: string, fallbackOriginal: string): { rew
       const explanation = explanationParts.join(explanationMarker).trim() || "已根据要求完成重写";
       return { rewrittenText: rewrittenText || fallbackOriginal, explanation };
     } else {
-      return { rewrittenText: afterRewrite.trim() || fallbackOriginal, explanation: "已根据要求完成重写" };
+      return {
+        rewrittenText: afterRewrite.trim() || fallbackOriginal,
+        explanation: "已根据要求完成重写",
+      };
     }
   }
 
@@ -150,7 +169,9 @@ export function parseRewriteOutput(raw: string, fallbackOriginal: string): { rew
 /**
  * 执行 AI 片段编辑与重写
  */
-export async function rewriteSelection(options: RewriteSelectionOptions): Promise<RewriteSelectionResult> {
+export async function rewriteSelection(
+  options: RewriteSelectionOptions,
+): Promise<RewriteSelectionResult> {
   const { selectedText, instruction, fullText, history = [], tier = "flash" } = options;
   const trimmedSelection = selectedText.trim();
   const trimmedInstruction = instruction.trim();
@@ -214,7 +235,8 @@ export async function rewriteSelection(options: RewriteSelectionOptions): Promis
     });
     apiMessages.push({
       role: "assistant",
-      content: "了解，我已掌握文章的主题、行文风格与上下文语境。请提供需要修改的选定片段及具体诉求。",
+      content:
+        "了解，我已掌握文章的主题、行文风格与上下文语境。请提供需要修改的选定片段及具体诉求。",
     });
   }
 
@@ -268,7 +290,9 @@ export async function rewriteSelection(options: RewriteSelectionOptions): Promis
 
   const reply = data.choices?.[0]?.message?.content?.trim();
   if (!res.ok || !reply) {
-    throw new Error(`AI 编辑请求失败（HTTP ${res.status}）：${data.error?.message ?? "模型未返回内容"}`);
+    throw new Error(
+      `AI 编辑请求失败（HTTP ${res.status}）：${data.error?.message ?? "模型未返回内容"}`,
+    );
   }
 
   const { rewrittenText, explanation } = parseRewriteOutput(reply, trimmedSelection);
@@ -281,7 +305,9 @@ export async function rewriteSelection(options: RewriteSelectionOptions): Promis
 }
 
 /** 根据整篇文章与多轮提示生成新版本；只有用户在前端采纳后才会写回文章库。 */
-export async function regenerateArticle(options: RegenerateArticleOptions): Promise<RegenerateArticleResult> {
+export async function regenerateArticle(
+  options: RegenerateArticleOptions,
+): Promise<RegenerateArticleResult> {
   const {
     topic = "",
     sourceNotes = "",
@@ -332,9 +358,10 @@ export async function regenerateArticle(options: RegenerateArticleOptions): Prom
   }
   apiMessages.push({
     role: "user",
-    content: history.length === 0
-      ? `【重新生成提示词】\n${prompt}\n\n请输出完整的新标题、Markdown 正文和修改说明。`
-      : `【基于上一次结果继续修改】\n${prompt}\n\n请输出完整的新标题、Markdown 正文和修改说明。`,
+    content:
+      history.length === 0
+        ? `【重新生成提示词】\n${prompt}\n\n请输出完整的新标题、Markdown 正文和修改说明。`
+        : `【基于上一次结果继续修改】\n${prompt}\n\n请输出完整的新标题、Markdown 正文和修改说明。`,
   });
 
   const res = await fetchWithRetry(
@@ -344,7 +371,12 @@ export async function regenerateArticle(options: RegenerateArticleOptions): Prom
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({ model, temperature: 0.75, messages: apiMessages }),
     },
-    { retries: HTTP_RETRIES, retryPost: true, timeoutMs: HTTP_TIMEOUT_MS, label: "AI 重新生成整篇文章" },
+    {
+      retries: HTTP_RETRIES,
+      retryPost: true,
+      timeoutMs: HTTP_TIMEOUT_MS,
+      label: "AI 重新生成整篇文章",
+    },
   );
   const data = (await res.json()) as {
     choices?: { message?: { content?: string } }[];
@@ -352,7 +384,9 @@ export async function regenerateArticle(options: RegenerateArticleOptions): Prom
   };
   const reply = data.choices?.[0]?.message?.content?.trim();
   if (!res.ok || !reply) {
-    throw new Error(`AI 重新生成请求失败（HTTP ${res.status}）：${data.error?.message ?? "模型未返回内容"}`);
+    throw new Error(
+      `AI 重新生成请求失败（HTTP ${res.status}）：${data.error?.message ?? "模型未返回内容"}`,
+    );
   }
   const parsed = parseArticleRegenerateOutput(reply, title, article);
   return { ...parsed, model };

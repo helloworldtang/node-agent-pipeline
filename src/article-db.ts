@@ -56,17 +56,19 @@ function normalizeDelivery(input: DeliveryInput): IndexedDelivery {
 
 function fingerprint(record: IndexedDelivery): string {
   return createHash("sha256")
-    .update(JSON.stringify([
-      record.at,
-      record.platform,
-      record.account,
-      record.title,
-      record.mediaId ?? null,
-      record.status,
-      record.sourceFile,
-      record.idempotencyKey ?? null,
-      record.error ?? null,
-    ]))
+    .update(
+      JSON.stringify([
+        record.at,
+        record.platform,
+        record.account,
+        record.title,
+        record.mediaId ?? null,
+        record.status,
+        record.sourceFile,
+        record.idempotencyKey ?? null,
+        record.error ?? null,
+      ]),
+    )
     .digest("hex");
 }
 
@@ -76,7 +78,9 @@ export class ArticleIndex {
   constructor(filename = ARTICLE_DB_FILE) {
     mkdirSync(dirname(filename), { recursive: true });
     this.db = new DatabaseSync(filename);
-    this.db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;");
+    this.db.exec(
+      "PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;",
+    );
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS articles (
         id TEXT PRIMARY KEY,
@@ -133,7 +137,9 @@ export class ArticleIndex {
   }
 
   upsertArticle(article: IndexedArticle, now = new Date().toISOString()): void {
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       INSERT INTO articles
         (id, title, mtime, size, has_html, has_cover, cover, created_at, updated_at, archived_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
@@ -146,26 +152,32 @@ export class ArticleIndex {
         cover = excluded.cover,
         updated_at = excluded.updated_at,
         archived_at = NULL
-    `).run(
-      article.id,
-      article.title,
-      article.mtime,
-      article.size,
-      article.hasHtml ? 1 : 0,
-      article.hasCover ? 1 : 0,
-      article.cover ?? null,
-      now,
-      now,
-    );
+    `,
+      )
+      .run(
+        article.id,
+        article.title,
+        article.mtime,
+        article.size,
+        article.hasHtml ? 1 : 0,
+        article.hasCover ? 1 : 0,
+        article.cover ?? null,
+        now,
+        now,
+      );
   }
 
   listArticles(): IndexedArticle[] {
-    const rows = this.db.prepare(`
+    const rows = this.db
+      .prepare(
+        `
       SELECT id, title, mtime, size, has_html, has_cover, cover
       FROM articles
       WHERE archived_at IS NULL
       ORDER BY mtime DESC, id DESC
-    `).all() as Array<Record<string, unknown>>;
+    `,
+      )
+      .all() as Array<Record<string, unknown>>;
     return rows.map((row) => ({
       id: String(row.id),
       title: String(row.title),
@@ -184,7 +196,9 @@ export class ArticleIndex {
       return;
     }
     const placeholders = values.map(() => "?").join(",");
-    this.db.prepare(`DELETE FROM articles WHERE archived_at IS NULL AND id NOT IN (${placeholders})`).run(...values);
+    this.db
+      .prepare(`DELETE FROM articles WHERE archived_at IS NULL AND id NOT IN (${placeholders})`)
+      .run(...values);
   }
 
   markArticleTrashed(id: string, trashedAt = new Date().toISOString()): void {
@@ -200,20 +214,28 @@ export class ArticleIndex {
   }
 
   upsertVersion(articleId: string, version: IndexedVersion): void {
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       INSERT INTO article_versions (article_id, version_id, created_at)
       VALUES (?, ?, ?)
       ON CONFLICT(article_id, version_id) DO UPDATE SET created_at = excluded.created_at
-    `).run(articleId, version.id, version.createdAt);
+    `,
+      )
+      .run(articleId, version.id, version.createdAt);
   }
 
   listVersions(articleId: string): IndexedVersion[] {
-    const rows = this.db.prepare(`
+    const rows = this.db
+      .prepare(
+        `
       SELECT version_id, created_at
       FROM article_versions
       WHERE article_id = ?
       ORDER BY created_at DESC, version_id DESC
-    `).all(articleId) as Array<Record<string, unknown>>;
+    `,
+      )
+      .all(articleId) as Array<Record<string, unknown>>;
     return rows.map((row) => ({ id: String(row.version_id), createdAt: String(row.created_at) }));
   }
 
@@ -224,49 +246,65 @@ export class ArticleIndex {
       return;
     }
     const placeholders = values.map(() => "?").join(",");
-    this.db.prepare(
-      `DELETE FROM article_versions WHERE article_id = ? AND version_id NOT IN (${placeholders})`,
-    ).run(articleId, ...values);
+    this.db
+      .prepare(
+        `DELETE FROM article_versions WHERE article_id = ? AND version_id NOT IN (${placeholders})`,
+      )
+      .run(articleId, ...values);
   }
 
   recordDelivery(input: DeliveryInput): void {
     const record = normalizeDelivery(input);
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       INSERT OR IGNORE INTO deliveries
         (fingerprint, at, platform, account, title, media_id, status, source_file, idempotency_key, error)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      fingerprint(record),
-      record.at,
-      record.platform,
-      record.account,
-      record.title,
-      record.mediaId ?? null,
-      record.status,
-      record.sourceFile,
-      record.idempotencyKey ?? null,
-      record.error ?? null,
-    );
+    `,
+      )
+      .run(
+        fingerprint(record),
+        record.at,
+        record.platform,
+        record.account,
+        record.title,
+        record.mediaId ?? null,
+        record.status,
+        record.sourceFile,
+        record.idempotencyKey ?? null,
+        record.error ?? null,
+      );
   }
 
-  findSuccessfulDelivery(idempotencyKey: string): { platform: string; account: string; id: string } | null {
-    const row = this.db.prepare(`
+  findSuccessfulDelivery(
+    idempotencyKey: string,
+  ): { platform: string; account: string; id: string } | null {
+    const row = this.db
+      .prepare(
+        `
       SELECT platform, account, media_id
       FROM deliveries
       WHERE idempotency_key = ? AND status = 'success' AND media_id IS NOT NULL
       ORDER BY at DESC, seq DESC
       LIMIT 1
-    `).get(idempotencyKey) as Record<string, unknown> | undefined;
+    `,
+      )
+      .get(idempotencyKey) as Record<string, unknown> | undefined;
     if (!row || typeof row.media_id !== "string") return null;
     return { platform: String(row.platform), account: String(row.account), id: row.media_id };
   }
 
   listDeliveries(): IndexedDelivery[] {
-    const rows = this.db.prepare(`
+    const rows = this.db
+      .prepare(
+        `
       SELECT at, platform, account, title, media_id, status, source_file, idempotency_key, error
       FROM deliveries
       ORDER BY seq DESC
-    `).all() as Array<Record<string, unknown>>;
+    `,
+      )
+      .all() as Array<Record<string, unknown>>;
     return rows.map((row) => ({
       at: String(row.at),
       platform: String(row.platform),

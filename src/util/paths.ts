@@ -3,7 +3,9 @@ import { realpath } from "node:fs/promises";
 
 function isRelativeInside(root: string, candidate: string): boolean {
   const rel = relative(resolve(root), resolve(candidate));
-  return rel === "" || (rel !== ".." && !rel.startsWith(`..${requireSeparator()}`) && !isAbsolute(rel));
+  return (
+    rel === "" || (rel !== ".." && !rel.startsWith(`..${requireSeparator()}`) && !isAbsolute(rel))
+  );
 }
 
 function requireSeparator(): string {

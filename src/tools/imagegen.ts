@@ -13,7 +13,14 @@
 //   OpenAI            IMAGE_BASE_URL=https://api.openai.com/v1
 //                      IMAGE_MODEL=gpt-image-1         （需海外网络）
 // IMAGE_SIZE 可选，各家写法不同（万相 "1024*1024"，OpenAI/方舟 "1024x1024"），留空用供应商默认
-import { IMAGE_API_KEY, IMAGE_BASE_URL, IMAGE_MODEL, IMAGE_SIZE, HTTP_RETRIES, HTTP_TIMEOUT_MS } from "../config.ts";
+import {
+  IMAGE_API_KEY,
+  IMAGE_BASE_URL,
+  IMAGE_MODEL,
+  IMAGE_SIZE,
+  HTTP_RETRIES,
+  HTTP_TIMEOUT_MS,
+} from "../config.ts";
 import { atomicWriteFile } from "../util/files.ts";
 import { fetchWithRetry } from "../util/http.ts";
 
@@ -41,14 +48,18 @@ export async function generateImage(
   const body: Record<string, unknown> = { model, prompt };
   if (size) body.size = size;
 
-  const res = await fetchWithRetry(`${baseURL}/images/generations`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+  const res = await fetchWithRetry(
+    `${baseURL}/images/generations`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
     },
-    body: JSON.stringify(body),
-  }, { retries: HTTP_RETRIES, retryPost: true, timeoutMs: HTTP_TIMEOUT_MS, label: "AI 生图" });
+    { retries: HTTP_RETRIES, retryPost: true, timeoutMs: HTTP_TIMEOUT_MS, label: "AI 生图" },
+  );
   const data = (await res.json()) as ImagesResponse;
   const item = data.data?.[0];
   if (!res.ok || !item) {
@@ -61,7 +72,11 @@ export async function generateImage(
   if (item.b64_json) {
     buf = Buffer.from(item.b64_json, "base64");
   } else if (item.url) {
-    const img = await fetchWithRetry(item.url, {}, { retries: HTTP_RETRIES, timeoutMs: HTTP_TIMEOUT_MS, label: "下载生成图" });
+    const img = await fetchWithRetry(
+      item.url,
+      {},
+      { retries: HTTP_RETRIES, timeoutMs: HTTP_TIMEOUT_MS, label: "下载生成图" },
+    );
     if (!img.ok) throw new Error(`下载生成图失败：HTTP ${img.status}`);
     buf = Buffer.from(await img.arrayBuffer());
   } else {

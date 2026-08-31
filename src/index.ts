@@ -61,7 +61,9 @@ async function main(): Promise<void> {
   const startedAtMs = Date.now();
   const topic = process.argv[2];
   if (!topic || topic.startsWith("--")) {
-    console.error('用法：node src/index.ts "选题" [--notes 笔记.md] [--publish 账号] [--platform wechat]');
+    console.error(
+      '用法：node src/index.ts "选题" [--notes 笔记.md] [--publish 账号] [--platform wechat]',
+    );
     process.exit(1);
   }
   if (!LLM_API_KEY) {
@@ -80,7 +82,9 @@ async function main(): Promise<void> {
   }
 
   console.log("=".repeat(64));
-  console.log(` 文章生产流水线 · LLM=${LLM_PROVIDER} · 发布=${publishAccount ? `${publishPlatform}/${publishAccount}` : "关"}`);
+  console.log(
+    ` 文章生产流水线 · LLM=${LLM_PROVIDER} · 发布=${publishAccount ? `${publishPlatform}/${publishAccount}` : "关"}`,
+  );
   console.log("=".repeat(64));
   console.log(`选题：${topic}`);
 
@@ -137,7 +141,8 @@ async function main(): Promise<void> {
   const publishPayload = lastToolPayload<{ draft_id?: string }>(finalMessages, "publish_article");
   status = (snap.values.status as RunStatus) ?? status;
   failureReason = (snap.values.failureReason as string | null) ?? failureReason;
-  const outputOk = Boolean(snap.values.outputOk) && Boolean(finalArticle?.trim()) && Boolean(finalHtml?.trim());
+  const outputOk =
+    Boolean(snap.values.outputOk) && Boolean(finalArticle?.trim()) && Boolean(finalHtml?.trim());
   if (!outputOk && status !== "failed") {
     status = "failed";
     failureReason ??= !finalArticle?.trim() ? "未产出正文。" : "未产出有效 HTML。";
@@ -145,9 +150,11 @@ async function main(): Promise<void> {
 
   const preset = LLM_PRESETS[LLM_PROVIDER];
   const sourceDesc: string[] = [];
-  if ((process.env.NOTES_INLINE ?? "").trim()) sourceDesc.push(`内联探讨笔记 ${(process.env.NOTES_INLINE ?? "").trim().length} 字符`);
+  if ((process.env.NOTES_INLINE ?? "").trim())
+    sourceDesc.push(`内联探讨笔记 ${(process.env.NOTES_INLINE ?? "").trim().length} 字符`);
   if (argValue("--notes")) sourceDesc.push(`笔记文件 ${argValue("--notes")}`);
-  if (shouldAutoLoadMaterials() && await loadMaterialsFromDir()) sourceDesc.push("materials/ 目录素材");
+  if (shouldAutoLoadMaterials() && (await loadMaterialsFromDir()))
+    sourceDesc.push("materials/ 目录素材");
   const usage = finalMessages.reduce(
     (sum, m) => {
       const u = (m as AIMessage).usage_metadata;
@@ -169,11 +176,15 @@ async function main(): Promise<void> {
     model: `${LLM_PROVIDER}（编排 ${preset?.flash ?? "?"} / 写作 ${preset?.pro ?? "?"}）`,
     retries: Number(snap.values.retryCount ?? 0),
     ...usage,
-    failedStage: status === "failed" ? failureStage ?? "unknown" : undefined,
+    failedStage: status === "failed" ? (failureStage ?? "unknown") : undefined,
     failureReason,
     mediaId: publishPayload?.draft_id,
   };
-  await atomicWriteFile(join(OUTPUT_DIR, "runs", `${threadId}.json`), JSON.stringify(run, null, 2), "utf8");
+  await atomicWriteFile(
+    join(OUTPUT_DIR, "runs", `${threadId}.json`),
+    JSON.stringify(run, null, 2),
+    "utf8",
+  );
 
   if (finalArticle) {
     const id = await createArticle({
@@ -190,7 +201,9 @@ async function main(): Promise<void> {
       ],
       run,
     });
-    console.log(`\n[output] 文章文件夹：output/${id}/（标题：「${finalTitle}」，正文 ${finalArticle.length} 字）`);
+    console.log(
+      `\n[output] 文章文件夹：output/${id}/（标题：「${finalTitle}」，正文 ${finalArticle.length} 字）`,
+    );
   }
   if (status === "failed") {
     console.error(`\n✗ 失败（${failureReason ?? "流水线未完成"}）`);

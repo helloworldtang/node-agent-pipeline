@@ -7,12 +7,7 @@ import { HumanMessage, ToolMessage, type BaseMessage } from "@langchain/core/mes
 import { buildReactAgent } from "../agents/reactAgent.ts";
 import { refineArticle } from "../agents/writerAgent.ts";
 import { lastToolPayload } from "../util/messages.ts";
-import {
-  FORCE_FIRST_REFINE,
-  MAX_RETRIES,
-  MIN_ARTICLE_LEN,
-  REQUIRED_SECTIONS,
-} from "../config.ts";
+import { FORCE_FIRST_REFINE, MAX_RETRIES, MIN_ARTICLE_LEN, REQUIRED_SECTIONS } from "../config.ts";
 import type { HarnessStateT } from "./state.ts";
 import { renderMarkdownToWeChatHtml } from "../tools/formatSkill.ts";
 import { inspectArticleQuality } from "../tools/quality.ts";
@@ -24,7 +19,12 @@ export async function inputGuardrail(state: HarnessStateT) {
   if (!ok) {
     console.log(`[guardrail:input] 拒绝（长度=${topic.length}，需 2~200 字）`);
     const reason = `选题不合规，长度=${topic.length}，需 2~200 字。`;
-    return { inputOk: false, status: "failed" as const, failureReason: reason, validationMsg: reason };
+    return {
+      inputOk: false,
+      status: "failed" as const,
+      failureReason: reason,
+      validationMsg: reason,
+    };
   }
   console.log(`[guardrail:input] 通过：${topic}`);
   return { inputOk: true, status: "success" as const, failureReason: null };
@@ -118,9 +118,18 @@ export async function validator(state: HarnessStateT) {
 /** 修订节点：只携带当前标题、草稿和确定性校验反馈，完成后直接重新排版。 */
 export async function refineNode(state: HarnessStateT) {
   const currentTitle = state.title ?? state.topic ?? "未命名文章";
-  const res = await refineArticle(state.article ?? "", state.validationMsg ?? "请修订当前草稿", currentTitle);
+  const res = await refineArticle(
+    state.article ?? "",
+    state.validationMsg ?? "请修订当前草稿",
+    currentTitle,
+  );
   const html = renderMarkdownToWeChatHtml(res.article);
-  return { title: res.title, article: res.article, html, validationMsg: "已完成针对校验反馈的修订。" };
+  return {
+    title: res.title,
+    article: res.article,
+    html,
+    validationMsg: "已完成针对校验反馈的修订。",
+  };
 }
 
 export function routeAfterValidator(state: HarnessStateT): "refine" | "output_guardrail" {
@@ -137,7 +146,8 @@ export async function outputGuardrail(state: HarnessStateT) {
   const articleOk = article.trim().length > 0;
   const htmlOk = html.length > 0 && html.includes("<section");
   const qualityIssues = articleOk && htmlOk ? inspectArticleQuality(article, html) : [];
-  const structuralOk = titleOk && articleOk && htmlOk && state.publishOk && state.status !== "failed";
+  const structuralOk =
+    titleOk && articleOk && htmlOk && state.publishOk && state.status !== "failed";
   const ok = titleOk && articleOk && htmlOk && state.publishOk;
   const reason = !titleOk
     ? "未产出有效文章标题。"
@@ -146,14 +156,17 @@ export async function outputGuardrail(state: HarnessStateT) {
       : !htmlOk
         ? "未产出有效 HTML。"
         : !state.publishOk
-            ? state.failureReason ?? "发布失败。"
-            : state.status === "failed"
-              ? state.failureReason ?? "流水线已失败。"
-              : null;
-  const degradedReason = [
-    state.status === "degraded" ? state.validationMsg : null,
-    qualityIssues.length > 0 ? `质量检查：${qualityIssues.join("；")}` : null,
-  ].filter(Boolean).join("；") || null;
+          ? (state.failureReason ?? "发布失败。")
+          : state.status === "failed"
+            ? (state.failureReason ?? "流水线已失败。")
+            : null;
+  const degradedReason =
+    [
+      state.status === "degraded" ? state.validationMsg : null,
+      qualityIssues.length > 0 ? `质量检查：${qualityIssues.join("；")}` : null,
+    ]
+      .filter(Boolean)
+      .join("；") || null;
   const finalStatus = !structuralOk
     ? ("failed" as const)
     : degradedReason
@@ -168,6 +181,6 @@ export async function outputGuardrail(state: HarnessStateT) {
     valid: ok,
     status: finalStatus,
     failureReason: finalReason,
-    validationMsg: ok ? state.validationMsg ?? "产出校验通过。" : reason,
+    validationMsg: ok ? (state.validationMsg ?? "产出校验通过。") : reason,
   };
 }

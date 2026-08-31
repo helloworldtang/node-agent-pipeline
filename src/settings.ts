@@ -39,6 +39,22 @@ function mask(v: string): string {
   return `${v.slice(0, 3)}****${v.slice(-4)}`;
 }
 
+/** .env 值转义（与 Node 原生 loadEnvFile 的解析行为对齐，实测矩阵）：
+ *  - 裸值：换行破坏行结构，`#` 之后被当注释截断 —— 必须包裹；
+ *  - 单引号：内容完全字面（换行、双引号、#、反斜杠都原样），但不能含 `'`；
+ *  - 双引号：`\n` 被还原为换行，其余字面，但 `\"` 会被当作行尾导致截断。
+ *  策略：优先单引号（最忠实）；含 `'` 时用双引号并把换行转义为 `\n`；
+ *  两种引号并存则无安全写法，明确报错让用户手动编辑该行。 */
+export function escapeEnvValue(value: string): string {
+  const hasSingle = value.includes("'");
+  const hasDouble = value.includes('"');
+  if (hasSingle && hasDouble) {
+    throw new Error("配置值同时包含单引号和双引号，无法安全写入 .env，请手动编辑该行");
+  }
+  if (hasSingle) return `"${value.replace(/\r?\n/g, "\\n")}"`;
+  return `'${value}'`;
+}
+
 export interface SettingItem {
   key: EditableKey;
   secret: boolean;
@@ -80,18 +96,27 @@ export async function updateSettings(updates: Record<string, string>): Promise<s
   let text = "";
   try {
     text = await readFile(ENV_FILE, "utf8");
-  } catch { /* .env 不存在则新建 */ }
+  } catch {
+    /* .env 不存在则新建 */
+  }
   const lines = text.split("\n");
 
   for (const [key, value] of entries) {
     const idx = lines.findIndex((l) => l.startsWith(`${key}=`));
-    const line = `${key}=${value}`;
+    const line = `${key}=${escapeEnvValue(value)}`;
     if (idx >= 0) lines[idx] = line;
     else lines.push(line);
     process.env[key] = value; // 即时生效：健康检查 / 生图 / 后续启动的流水线子进程都读 process.env
     changed.push(key);
   }
 
-  await atomicWriteFile(ENV_FILE, lines.join("\n").replace(/\n{3,}/g, "\n\n").trim() + "\n", "utf8");
+  await atomicWriteFile(
+    ENV_FILE,
+    lines
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim() + "\n",
+    "utf8",
+  );
   return changed;
 }

@@ -4,7 +4,8 @@ import tseslint from "typescript-eslint";
 import prettierConfig from "eslint-config-prettier";
 
 export default tseslint.config(
-  { ignores: ["dist/**", "node_modules/**", "output/**"] },
+  // web/ 是独立子项目（React + Vite + npm 自带工具链），根 ESLint 只管 src/ 与 test/
+  { ignores: ["dist/**", "node_modules/**", "output/**", "web/**"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   prettierConfig,

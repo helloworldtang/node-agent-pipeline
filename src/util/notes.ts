@@ -27,7 +27,7 @@ export async function collectNotes(options: CollectNotesOptions = {}): Promise<s
   }
 
   if (options.includeDirectory ?? shouldAutoLoadMaterials()) {
-    const dirNotes = options.directoryNotes ?? await loadMaterialsFromDir();
+    const dirNotes = options.directoryNotes ?? (await loadMaterialsFromDir());
     if (dirNotes) parts.push(dirNotes);
   }
   return parts.join("\n\n");

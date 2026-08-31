@@ -8,7 +8,21 @@ import { readdir, readFile, stat, mkdir, rename, rm } from "node:fs/promises";
 import { dirname, join, resolve, extname } from "node:path";
 import { timingSafeEqual, randomUUID } from "node:crypto";
 import { once } from "node:events";
-import { MATERIALS_DIR, OUTPUT_DIR, PROJECT_ROOT, WECHAT_ACCOUNTS_FILE, COVERS_DIR, IMAGE_API_KEY, IMAGE_BASE_URL, IMAGE_MODEL, IMAGE_SIZE, DEFAULT_COVER_PROMPT, API_MAX_BODY_BYTES, API_TOKEN, MAX_CONCURRENT_RUNS } from "./config.ts";
+import {
+  MATERIALS_DIR,
+  OUTPUT_DIR,
+  PROJECT_ROOT,
+  WECHAT_ACCOUNTS_FILE,
+  COVERS_DIR,
+  IMAGE_API_KEY,
+  IMAGE_BASE_URL,
+  IMAGE_MODEL,
+  IMAGE_SIZE,
+  DEFAULT_COVER_PROMPT,
+  API_MAX_BODY_BYTES,
+  API_TOKEN,
+  MAX_CONCURRENT_RUNS,
+} from "./config.ts";
 import { publishArticle } from "./tools/publish.ts";
 import { generateImage } from "./tools/imagegen.ts";
 import { describeArticleForCover } from "./tools/coverDesign.ts";
@@ -60,6 +74,7 @@ import {
   trashArticle,
   restoreTrashedArticle,
 } from "./articles.ts";
+import type { ArticleAiSession } from "./articles.ts";
 import { ensureDeliveriesIndexed, getArticleIndex } from "./article-db.ts";
 
 // ---- CLI 参数 ----
@@ -112,7 +127,8 @@ async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> 
     total += chunk.length;
     if (total <= API_MAX_BODY_BYTES) chunks.push(chunk);
   }
-  if (total > API_MAX_BODY_BYTES) throw new HttpError(413, `请求体超过限制（最大 ${API_MAX_BODY_BYTES} 字节）`);
+  if (total > API_MAX_BODY_BYTES)
+    throw new HttpError(413, `请求体超过限制（最大 ${API_MAX_BODY_BYTES} 字节）`);
   if (chunks.length === 0) return {};
   try {
     const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
@@ -127,7 +143,11 @@ async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> 
 }
 
 /** Stream binary uploads to a temporary file, then atomically publish the file. */
-async function streamUpload(req: IncomingMessage, destination: string, maxBytes: number): Promise<number> {
+async function streamUpload(
+  req: IncomingMessage,
+  destination: string,
+  maxBytes: number,
+): Promise<number> {
   const declared = Number(req.headers["content-length"] ?? 0);
   if (declared > maxBytes) {
     req.resume();
@@ -166,7 +186,7 @@ function authorized(req: IncomingMessage, queryToken?: string): boolean {
   if (!AUTH_REQUIRED) return true;
   const raw = req.headers.authorization ?? req.headers["x-api-token"];
   const token = Array.isArray(raw) ? raw[0] : raw;
-  const value = token?.startsWith("Bearer ") ? token.slice(7) : token ?? queryToken;
+  const value = token?.startsWith("Bearer ") ? token.slice(7) : (token ?? queryToken);
   if (!value || !API_TOKEN) return false;
   const left = Buffer.from(value);
   const right = Buffer.from(API_TOKEN);
@@ -203,7 +223,15 @@ function startRun(topic: string, notesFile: string | null, notesInline: string):
     env,
     stdio: ["ignore", "pipe", "pipe"],
   });
-  const run: Run = { id, proc, logs: [], done: false, exitCode: null, status: "running", listeners: new Set() };
+  const run: Run = {
+    id,
+    proc,
+    logs: [],
+    done: false,
+    exitCode: null,
+    status: "running",
+    listeners: new Set(),
+  };
   runs.set(id, run);
 
   const push = (line: string) => {
@@ -212,18 +240,32 @@ function startRun(topic: string, notesFile: string | null, notesInline: string):
     if (marker) {
       try {
         const result = JSON.parse(marker[1]!) as { status?: Run["status"]; reason?: string };
-        if (result.status === "success" || result.status === "degraded" || result.status === "failed") {
+        if (
+          result.status === "success" ||
+          result.status === "degraded" ||
+          result.status === "failed"
+        ) {
           run.status = result.status;
           run.reason = result.reason;
         }
-      } catch { /* 日志标记损坏时由退出码兜底 */ }
+      } catch {
+        /* 日志标记损坏时由退出码兜底 */
+      }
     }
     for (const res of run.listeners) {
       res.write(`data: ${JSON.stringify({ type: "log", line })}\n\n`);
     }
   };
-  proc.stdout?.on("data", (b: Buffer) => b.toString("utf8").split("\n").filter(Boolean).forEach(push));
-  proc.stderr?.on("data", (b: Buffer) => b.toString("utf8").split("\n").filter(Boolean).forEach((l) => push(`[stderr] ${l}`)));
+  proc.stdout?.on("data", (b: Buffer) =>
+    b.toString("utf8").split("\n").filter(Boolean).forEach(push),
+  );
+  proc.stderr?.on("data", (b: Buffer) =>
+    b
+      .toString("utf8")
+      .split("\n")
+      .filter(Boolean)
+      .forEach((l) => push(`[stderr] ${l}`)),
+  );
   proc.on("close", (code) => {
     run.done = true;
     run.exitCode = run.cancelRequested ? 130 : code;
@@ -231,7 +273,9 @@ function startRun(topic: string, notesFile: string | null, notesInline: string):
     else if (run.status === "running") run.status = code === 0 ? "success" : "failed";
     if (run.status === "failed" && !run.reason) run.reason = `子进程退出码 ${code ?? "unknown"}`;
     for (const res of run.listeners) {
-      res.write(`data: ${JSON.stringify({ type: "done", exitCode: run.exitCode, status: run.status, reason: run.reason })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ type: "done", exitCode: run.exitCode, status: run.status, reason: run.reason })}\n\n`,
+      );
       res.end();
     }
     run.listeners.clear();
@@ -262,11 +306,17 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const method = req.method ?? "GET";
 
   try {
-    if (!authorized(req, url.searchParams.get("token") ?? undefined)) return sendJson(res, 401, { error: "需要有效的 API Token" });
+    if (!authorized(req, url.searchParams.get("token") ?? undefined))
+      return sendJson(res, 401, { error: "需要有效的 API Token" });
 
     // 健康检查
     if (path === "/api/health") {
-      return sendJson(res, 200, { ok: true, llmKeyConfigured: Boolean(process.env.LLM_API_KEY ?? process.env.DEEPSEEK_API_KEY ?? process.env.MOONSHOT_API_KEY) });
+      return sendJson(res, 200, {
+        ok: true,
+        llmKeyConfigured: Boolean(
+          process.env.LLM_API_KEY ?? process.env.DEEPSEEK_API_KEY ?? process.env.MOONSHOT_API_KEY,
+        ),
+      });
     }
 
     // 图形化设置：GET 回掩码后的配置项；POST 写入 .env 并即时生效（空值=保持不变）
@@ -317,14 +367,26 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
       const diskArticle = await readArticleFile(articleId, "md");
       const source = await readArticleSource(articleId);
       const currentArticle = String(body.currentArticle ?? diskArticle).trim();
-      const currentTitle = String(body.currentTitle ?? (await listArticles()).find((a) => a.id === articleId)?.title ?? articleId).trim();
+      const currentTitle = String(
+        body.currentTitle ??
+          (await listArticles()).find((a) => a.id === articleId)?.title ??
+          articleId,
+      ).trim();
       const topic = String(body.topic ?? source.topic ?? "").trim();
       const sourceNotes = String(body.sourceNotes ?? source.notes ?? "").trim();
       const history = Array.isArray(body.history)
         ? (body.history as { role: "user" | "assistant"; content: string }[])
         : undefined;
       const tier = body.tier === "flash" ? "flash" : "pro";
-      const result = await regenerateArticle({ topic, sourceNotes, currentTitle, currentArticle, instruction, history, tier });
+      const result = await regenerateArticle({
+        topic,
+        sourceNotes,
+        currentTitle,
+        currentArticle,
+        instruction,
+        history,
+        tier,
+      });
       return sendJson(res, 200, { ok: true, ...result });
     }
 
@@ -339,7 +401,9 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
               f.toLowerCase() !== "readme.md", // 目录说明书不算素材
           )
           .sort();
-      } catch { /* 目录不存在时返回空 */ }
+      } catch {
+        /* 目录不存在时返回空 */
+      }
       return sendJson(res, 200, { dir: MATERIALS_DIR, files });
     }
     const matMatch = path.match(/^\/api\/materials\/(.+)$/);
@@ -385,8 +449,18 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
         files = (await readdir(COVERS_DIR))
           .filter((f) => [".png", ".jpg", ".jpeg", ".webp"].includes(extname(f).toLowerCase()))
           .sort();
-      } catch { /* 目录不存在时返回空 */ }
-      return sendJson(res, 200, { dir: COVERS_DIR, files, imageGenReady: Boolean(process.env.IMAGE_API_KEY ?? IMAGE_API_KEY), imageModel: (process.env.IMAGE_API_KEY ?? IMAGE_API_KEY) ? (process.env.IMAGE_MODEL ?? IMAGE_MODEL) : undefined });
+      } catch {
+        /* 目录不存在时返回空 */
+      }
+      return sendJson(res, 200, {
+        dir: COVERS_DIR,
+        files,
+        imageGenReady: Boolean(process.env.IMAGE_API_KEY ?? IMAGE_API_KEY),
+        imageModel:
+          (process.env.IMAGE_API_KEY ?? IMAGE_API_KEY)
+            ? (process.env.IMAGE_MODEL ?? IMAGE_MODEL)
+            : undefined,
+      });
     }
     // 上传封面到封面库：{ filename, dataBase64 }
     if (path === "/api/covers" && method === "POST") {
@@ -420,8 +494,12 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
         return sendJson(res, 400, { error: "原名称与新名称均不能为空" });
       }
       if (
-        oldName.includes("/") || oldName.includes("\\") || oldName.includes("..") ||
-        newName.includes("/") || newName.includes("\\") || newName.includes("..")
+        oldName.includes("/") ||
+        oldName.includes("\\") ||
+        oldName.includes("..") ||
+        newName.includes("/") ||
+        newName.includes("\\") ||
+        newName.includes("..")
       ) {
         return sendJson(res, 403, { error: "非法文件名" });
       }
@@ -479,7 +557,13 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
       await generateImage(fullPrompt, join(COVERS_DIR, libName), coverSizeOverride());
       const name = await setArticleCover(id, join(COVERS_DIR, libName), libName);
       await appendLog(id, `AI 生成封面：${libName}（画面描述：${description}）`);
-      return sendJson(res, 200, { ok: true, name: libName, cover: name, description, prompt: fullPrompt });
+      return sendJson(res, 200, {
+        ok: true,
+        name: libName,
+        cover: name,
+        description,
+        prompt: fullPrompt,
+      });
     }
     const coverMatch = path.match(/^\/api\/covers\/(.+)$/);
     if (coverMatch && method === "GET") {
@@ -501,7 +585,10 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     // 账号列表（只回名称和配置完整性，绝不回传密钥；cover 只回文件名）
     if (path === "/api/accounts" && method === "GET") {
       try {
-        const all = JSON.parse(await readFile(WECHAT_ACCOUNTS_FILE, "utf8")) as Record<string, { cover?: string; appId?: string; appSecret?: string }>;
+        const all = JSON.parse(await readFile(WECHAT_ACCOUNTS_FILE, "utf8")) as Record<
+          string,
+          { cover?: string; appId?: string; appSecret?: string }
+        >;
         const accounts = Object.entries(all).map(([name, cfg]) => ({
           name,
           configured: Boolean(cfg.appId && cfg.appSecret && cfg.cover),
@@ -570,7 +657,8 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
       // 读取文章文件：/file?which=md|html|log
       if (sub === "/file" && method === "GET") {
         const which = (url.searchParams.get("which") ?? "md") as "md" | "html" | "log";
-        if (!["md", "html", "log"].includes(which)) return sendJson(res, 400, { error: "which 需为 md/html/log" });
+        if (!["md", "html", "log"].includes(which))
+          return sendJson(res, 400, { error: "which 需为 md/html/log" });
         const content = await readArticleFile(id, which);
         if (which === "html") {
           res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
@@ -599,7 +687,11 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
       }
       const versionReadMatch = sub.match(/^\/versions\/([\w.-]+)$/);
       if (versionReadMatch && method === "GET") {
-        return sendJson(res, 200, await readArticleVersion(id, decodeURIComponent(versionReadMatch[1]!)));
+        return sendJson(
+          res,
+          200,
+          await readArticleVersion(id, decodeURIComponent(versionReadMatch[1]!)),
+        );
       }
       if (versionsMatch && method === "POST" && versionsMatch[1]) {
         await restoreArticleVersion(id, decodeURIComponent(versionsMatch[1]));
@@ -614,7 +706,7 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
         if (!body || !body.id || !Array.isArray(body.messages)) {
           return sendJson(res, 400, { error: "缺少有效的 session 数据" });
         }
-        await saveArticleAiSession(id, body as unknown as any);
+        await saveArticleAiSession(id, body as unknown as ArticleAiSession);
         return sendJson(res, 200, { ok: true, id: body.id });
       }
       // 本篇封面：GET 读图；POST { name } 从封面库选用 / { filename, dataBase64 } 直接上传新图
@@ -643,7 +735,8 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
         const body = await readBody(req);
         if (body.name) {
           const src = resolve(COVERS_DIR, String(body.name));
-          if (!(await isInsideDir(src, COVERS_DIR))) return sendJson(res, 403, { error: "非法路径" });
+          if (!(await isInsideDir(src, COVERS_DIR)))
+            return sendJson(res, 403, { error: "非法路径" });
           const name = await setArticleCover(id, src, String(body.name));
           await appendLog(id, `设置封面：选用封面库 ${body.name}`);
           return sendJson(res, 200, { ok: true, name });
@@ -692,9 +785,17 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
       const imgMatch = sub.match(/^\/images\/(.+)$/);
       if (imgMatch && method === "GET") {
         const p = resolve(articleDir(id), "images", decodeURIComponent(imgMatch[1]!));
-        if (!(await isInsideDir(p, join(articleDir(id), "images")))) return sendJson(res, 403, { error: "非法路径" });
+        if (!(await isInsideDir(p, join(articleDir(id), "images"))))
+          return sendJson(res, 403, { error: "非法路径" });
         const ext = extname(p).toLowerCase();
-        const mime = ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : ext === ".gif" ? "image/gif" : "image/jpeg";
+        const mime =
+          ext === ".png"
+            ? "image/png"
+            : ext === ".webp"
+              ? "image/webp"
+              : ext === ".gif"
+                ? "image/gif"
+                : "image/jpeg";
         try {
           res.writeHead(200, { "Content-Type": mime, "Cache-Control": "no-cache" });
           res.end(await readFile(p));
@@ -708,7 +809,9 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     // 启动流水线
     if (path === "/api/run" && method === "POST") {
       if (activeRunCount() >= MAX_CONCURRENT_RUNS) {
-        return sendJson(res, 409, { error: `已有 ${MAX_CONCURRENT_RUNS} 个任务运行中，请稍后再试或先取消现有任务` });
+        return sendJson(res, 409, {
+          error: `已有 ${MAX_CONCURRENT_RUNS} 个任务运行中，请稍后再试或先取消现有任务`,
+        });
       }
       const body = await readBody(req);
       const topic = String(body.topic ?? "").trim();
@@ -740,7 +843,9 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
       // 先补发历史日志，再挂到实时流上
       for (const line of run.logs) res.write(`data: ${JSON.stringify({ type: "log", line })}\n\n`);
       if (run.done) {
-        res.write(`data: ${JSON.stringify({ type: "done", exitCode: run.exitCode, status: run.status, reason: run.reason })}\n\n`);
+        res.write(
+          `data: ${JSON.stringify({ type: "done", exitCode: run.exitCode, status: run.status, reason: run.reason })}\n\n`,
+        );
         res.end();
         return;
       }
@@ -763,7 +868,8 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
       const coverName = String(body.cover ?? "").trim();
       if (coverName) {
         const cp = resolve(COVERS_DIR, coverName);
-        if (!(await isInsideDir(cp, COVERS_DIR))) return sendJson(res, 403, { error: "非法封面路径" });
+        if (!(await isInsideDir(cp, COVERS_DIR)))
+          return sendJson(res, 403, { error: "非法封面路径" });
         // 显式封面只属于本次投递，不复制进文章目录，避免污染文章自身封面状态。
         await appendLog(file, `投递时临时封面：${coverName}`);
         cover = cp;
@@ -807,5 +913,7 @@ createServer((req, res) => void route(req, res)).listen(PORT, HOST, () => {
   console.log(`[server] 文章流水线 API 已启动：http://${HOST}:${PORT}`);
   console.log(`[server] 素材目录：${MATERIALS_DIR}`);
   console.log(`[server] 产出目录：${OUTPUT_DIR}`);
-  console.log(`[server] AI 生图：${IMAGE_API_KEY ? `已配置（${IMAGE_MODEL}）` : "未配置（配置 IMAGE_API_KEY 后可用）"}`);
+  console.log(
+    `[server] AI 生图：${IMAGE_API_KEY ? `已配置（${IMAGE_MODEL}）` : "未配置（配置 IMAGE_API_KEY 后可用）"}`,
+  );
 });

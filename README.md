@@ -30,7 +30,7 @@ pnpm install
 cp .env.example .env          # 填入 LLM_API_KEY
 ```
 
-运行环境需要 Node.js 22.5+（使用内置 `node:sqlite` 保存文章索引）。
+运行环境需要 Node.js 22.18+（直接跑 `.ts` 需要 type stripping 默认开启，文章索引用内置 `node:sqlite`）。
 
 启动 Web 控制台：
 

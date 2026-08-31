@@ -96,7 +96,8 @@ export const WECHAT_ACCOUNTS_FILE = process.env.WECHAT_ACCOUNTS_FILE
 
 // === AI 生图（OpenAI 兼容协议，可选；不配则界面上「AI 生成封面」不可用）===
 export const IMAGE_API_KEY = process.env.IMAGE_API_KEY ?? "";
-export const IMAGE_BASE_URL = process.env.IMAGE_BASE_URL ?? "https://dashscope.aliyuncs.com/compatible-mode/v1";
+export const IMAGE_BASE_URL =
+  process.env.IMAGE_BASE_URL ?? "https://dashscope.aliyuncs.com/compatible-mode/v1";
 export const IMAGE_MODEL = process.env.IMAGE_MODEL ?? "wanx2.1-t2i-turbo";
 export const IMAGE_SIZE = process.env.IMAGE_SIZE ?? ""; // 各家写法不同，留空用供应商默认
 

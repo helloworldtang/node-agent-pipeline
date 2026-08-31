@@ -27,7 +27,10 @@ test("SQLite article metadata is queryable and ordered by mtime", async () => {
       cover: "cover.png",
     });
 
-    assert.deepEqual(index.listArticles().map((article) => article.id), ["newer", "older"]);
+    assert.deepEqual(
+      index.listArticles().map((article) => article.id),
+      ["newer", "older"],
+    );
     assert.deepEqual(index.listArticles()[0], {
       id: "newer",
       title: "新文章",
@@ -89,7 +92,10 @@ test("SQLite article can be hidden in the recycle bin and restored without losin
     ]);
 
     index.markArticleRestored("article-trash");
-    assert.deepEqual(index.listArticles().map((article) => article.id), ["article-trash"]);
+    assert.deepEqual(
+      index.listArticles().map((article) => article.id),
+      ["article-trash"],
+    );
   } finally {
     index.close();
   }

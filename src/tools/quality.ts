@@ -22,6 +22,7 @@ export function inspectArticleQuality(markdown: string, html: string): string[] 
     .map((match) => match[1]!.trim())
     .filter((src) => !/^(https?:)?\/\//.test(src) && !src.startsWith("data:"));
   if (localImages.some((src) => !src)) issues.push("存在空的本地图片链接");
-  if (localImages.length > 0 && !/<img\b/i.test(html)) issues.push("Markdown 有图片引用，但 HTML 没有图片节点");
+  if (localImages.length > 0 && !/<img\b/i.test(html))
+    issues.push("Markdown 有图片引用，但 HTML 没有图片节点");
   return issues;
 }

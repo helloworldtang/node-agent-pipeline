@@ -36,10 +36,11 @@ export function parseWriterOutput(raw: string, fallbackTitle = "未命名文章"
   if (text.includes(titleMarker) && text.includes(contentMarker)) {
     const afterTitle = text.split(titleMarker)[1] ?? "";
     const [titlePart, ...contentParts] = afterTitle.split(contentMarker);
-    const title = (titlePart ?? "")
-      .replace(/^[#\s]+/, "")
-      .split("\n")[0]
-      ?.trim() || fallbackTitle;
+    const title =
+      (titlePart ?? "")
+        .replace(/^[#\s]+/, "")
+        .split("\n")[0]
+        ?.trim() || fallbackTitle;
     const article = contentParts.join(contentMarker).trim();
     return { title, article };
   }
@@ -67,8 +68,14 @@ export function parseWriterOutput(raw: string, fallbackTitle = "未命名文章"
   }
 
   // 4. 兜底回退：若包含其他 Markdown 标题或纯文本
-  const firstLine = text.split("\n")[0]?.replace(/^[#>*`\-\s]+/, "").trim() ?? "";
-  const title = (firstLine.length >= 4 && firstLine.length <= 40 ? firstLine : fallbackTitle.slice(0, 30)) || "未命名文章";
+  const firstLine =
+    text
+      .split("\n")[0]
+      ?.replace(/^[#>*`\-\s]+/, "")
+      .trim() ?? "";
+  const title =
+    (firstLine.length >= 4 && firstLine.length <= 40 ? firstLine : fallbackTitle.slice(0, 30)) ||
+    "未命名文章";
   return { title, article: text };
 }
 
@@ -163,7 +170,8 @@ export async function refineArticle(
   try {
     return await runRefiner("pro", currentTitle, draft, feedback, tid);
   } catch (e) {
-    if (isModelUnavailable(e)) return runRefiner("flash", currentTitle, draft, feedback, `${tid}-flash`);
+    if (isModelUnavailable(e))
+      return runRefiner("flash", currentTitle, draft, feedback, `${tid}-flash`);
     throw e;
   }
 }

@@ -20,7 +20,14 @@ test("invalid input is explicitly failed", async () => {
 
 test("missing HTML cannot pass the output guardrail", async () => {
   const result = await outputGuardrail(
-    state({ title: "测试标题", article: "正文", html: "", publishOk: true, status: "success", validationMsg: null }),
+    state({
+      title: "测试标题",
+      article: "正文",
+      html: "",
+      publishOk: true,
+      status: "success",
+      validationMsg: null,
+    }),
   );
   assert.equal(result.outputOk, false);
   assert.equal(result.status, "failed");
@@ -29,7 +36,14 @@ test("missing HTML cannot pass the output guardrail", async () => {
 
 test("missing title cannot pass the output guardrail", async () => {
   const result = await outputGuardrail(
-    state({ title: "", article: "正文", html: "<section>ok</section>", publishOk: true, status: "success", validationMsg: null }),
+    state({
+      title: "",
+      article: "正文",
+      html: "<section>ok</section>",
+      publishOk: true,
+      status: "success",
+      validationMsg: null,
+    }),
   );
   assert.equal(result.outputOk, false);
   assert.equal(result.status, "failed");
@@ -92,7 +106,8 @@ test("web note collection does not implicitly include materials directory", asyn
 });
 
 test("removeArticleCover correctly removes cover file", async () => {
-  const { createArticle, setArticleCover, removeArticleCover, articleCoverPath } = await import("../src/articles.ts");
+  const { createArticle, setArticleCover, removeArticleCover, articleCoverPath } =
+    await import("../src/articles.ts");
   const id = await createArticle({ markdown: "# 测试封面删除\n\n正文内容测试。" });
   const root = await mkdtemp(join(tmpdir(), "cover-test-"));
   const tmpImg = join(root, "test-cover.png");
